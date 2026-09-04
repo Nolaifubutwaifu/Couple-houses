@@ -3,7 +3,7 @@
 "use strict";
 
 const BALANCE = {
-  startingHearts: 320,
+  startingCoins: 320,
   checkInBase: 25, streakBonus: 5, streakBonusCap: 100,
   duelQuestions: 6, duelPerMatch: 15, duelSweepBonus: 30,
   memoryPairs: 6, memoryMax: 60, memoryMin: 10, memoryParMoves: 8, memoryStepPenalty: 5,
@@ -77,6 +77,7 @@ function maybeCompleteCheckin(){
   state.streak.lastCheckIn = d;
   const bonus = Math.min(BALANCE.streakBonus * state.streak.count, BALANCE.streakBonusCap);
   state.stats.gamesPlayed++;
+  state.bond = (state.bond || 0) + 1;
   earn(BALANCE.checkInBase + bonus, "day " + state.streak.count + " together");
   refreshWorld();
 }
@@ -90,7 +91,7 @@ const GAMES = {
       const next = BALANCE.checkInBase + Math.min(BALANCE.streakBonus * (currentStreak() + 1), BALANCE.streakBonusCap);
       root.appendChild(el(`<div class="card">
         <div class="spread"><div><p class="h">Day ${currentStreak()}</p>
-        <p class="s dim">${doneToday ? "Claimed for today. The dome keeps its light until tomorrow." : "Both tap in to claim " + next + " hearts"}</p></div>
+        <p class="s dim">${doneToday ? "Claimed for today. The dome keeps its light until tomorrow." : "Both tap in to claim " + next + " coins"}</p></div>
         <span class="chip warm">${currentStreak()} day streak</span></div>
         <div class="checks"></div></div>`));
       const checks = root.querySelector(".checks");
@@ -209,7 +210,7 @@ const GAMES = {
         grid.appendChild(b);
       });
       if(g.finished){
-        root.appendChild(el(`<div class="card mid"><p class="big">${g.reward}</p><p class="s dim">hearts, in ${g.moves} moves</p></div>`));
+        root.appendChild(el(`<div class="card mid"><p class="big">${g.reward}</p><p class="s dim">coins, in ${g.moves} moves</p></div>`));
         const again = el(`<button class="btn go">Play again</button>`);
         again.onclick = () => { activeGame = null; render(); };
         root.appendChild(again);

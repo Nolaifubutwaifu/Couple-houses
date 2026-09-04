@@ -1,52 +1,34 @@
-/* NEST :: state, storage and screens.
-   The storage seam is unchanged from the first build: four methods, and
-   swapping in a real backend touches nothing else. */
+/* NEST :: the app once two people are in it.
+   Everything above this file is onboarding. The game state belongs to the
+   nest, not the device, so both paired tabs read and write the same record
+   and tell each other when it changes. */
 "use strict";
 
-const SCHEMA_VERSION = 2;
-const STORE_KEY = "nest.v2";
-const OLD_KEY = "couplehouses.v1";
+const GAME_VERSION = 3;
 
-const LocalStore = {
-  async load(){
-    try{
-      const raw = localStorage.getItem(STORE_KEY);
-      if(raw) return migrate(JSON.parse(raw));
-      const old = localStorage.getItem(OLD_KEY);
-      if(old) return migrate(JSON.parse(old));
-      return null;
-    }catch(err){ console.warn("load failed, starting fresh", err); return null; }
-  },
-  async save(s){
-    try{ localStorage.setItem(STORE_KEY, JSON.stringify(s)); return true; }
+/* The four method seam is unchanged, it just sits on the nest record now. */
+const Store = {
+  async load(nestId){ return Api.db.game[nestId] || null; },
+  async save(g){
+    if(!g || !g.nest_id) return false;
+    Api.db.game[g.nest_id] = g;
+    try{ localStorage.setItem("nest.db.v1", JSON.stringify(Api.db)); }
     catch(err){ console.warn("save failed, this session is memory only", err); return false; }
+    return true;
   },
-  async listShowcase(s){
-    const mine = s && s.showcase.published ? [ownCard(s)] : [];
+  async listShowcase(g){
+    const mine = g && g.showcase.published ? [ownCard(g)] : [];
     const seeds = SEED_HOUSES.map(h => ({ ...h, mine:false,
       placed:h.placed.map(p => ({ itemId:p[0], room:p[1], x:p[2], y:p[3], rot:p[4] || 0, instanceId:"s" + Math.random() })) }));
     return [...mine, ...seeds].map(h => ({ ...h, charm:charmOf(h.placed) })).sort((a, b) => b.charm - a.charm);
   },
-  async likeHouse(s, id){
-    const g = s.showcase.likesGiven, at = g.indexOf(id);
-    if(at >= 0) g.splice(at, 1); else g.push(id);
-    await this.save(s);
+  async likeHouse(g, id){
+    const arr = g.showcase.likesGiven, at = arr.indexOf(id);
+    if(at >= 0) arr.splice(at, 1); else arr.push(id);
+    await this.save(g);
     return at < 0;
   },
 };
-const Store = LocalStore;
-
-/* v1 kept its own room sizes and footprints. Hearts, streak and the couple
-   survive the move; the old layout cannot, so the home starts empty. */
-function migrate(s){
-  if(!s || typeof s !== "object") return null;
-  if(s.schemaVersion === SCHEMA_VERSION) return s;
-  const fresh = freshState(s.couple || { name:"Our nest", partnerA:"One", partnerB:"Two", togetherSince:today() });
-  fresh.wallet = s.wallet || fresh.wallet;
-  fresh.streak = Object.assign(fresh.streak, s.streak || {});
-  fresh.stats = Object.assign(fresh.stats, s.stats || {});
-  return fresh;
-}
 
 const SEED_HOUSES = [
   { id:"seed-1", name:"The Long Room", partners:"Bea and Cass", since:"2014-05-01", likes:1240,
@@ -78,37 +60,134 @@ const SEED_HOUSES = [
 ];
 
 /* ---- state ---- */
-let state = null;
+let state = null;                 // the nest's game record
 let route = { tab:"home", view:null };
 let held = null;
 let shopFilter = "living";
 let viewingLot = null;
 
-function freshState(couple){
+function newGame(nest){
   const rooms = {};
   ROOMS.forEach(r => { rooms[r.id] = { unlocked:r.price === 0 }; });
   return {
-    schemaVersion:SCHEMA_VERSION, couple,
-    wallet:{ hearts:BALANCE.startingHearts, lifetimeEarned:0 },
+    version:GAME_VERSION, nest_id:nest.id,
+    wallet:{ coins:BALANCE.startingCoins, lifetimeEarned:0 },
+    bond:0,
     streak:{ count:0, lastCheckIn:null, day:null, a:false, b:false },
     house:{ rooms, inventory:[], placed:[] },
     showcase:{ published:false, likesGiven:[], tagline:"" },
     stats:{ gamesPlayed:0, duelsPlayed:0, bestDuel:0 },
+    ceremony_pending:false,
   };
 }
-const save = () => Store.save(state);
+
+const App = {
+  me:null, get game(){ return state; },
+
+  ensureGame(nestId){
+    if(!Api.db.game[nestId]) Api.db.game[nestId] = newGame({ id:nestId });
+    state = Api.db.game[nestId];
+    state.nest_id = nestId;
+    return state;
+  },
+  saveGame(){
+    Store.save(state);
+    Api.Realtime.emit("game.changed", { nest_id:state.nest_id });
+  },
+
+  /* Onboarding hands over here, and only here. Reaching this point means
+     two active memberships exist, which is what makes the solo rules in
+     section 5 structural rather than a screen that has to remember. */
+  async enter(me){
+    this.me = me;
+    Onboard.finish();
+    this.ensureGame(me.nest.id);
+    if(state.ceremony_pending){
+      // this pair is owed a ceremony, in full, once
+      document.body.classList.add("onboarding");
+      $("#onboard").hidden = false;
+      Onboard.go("ceremony", me);
+      return;
+    }
+    state.couple = this.couple(me);
+    render();
+    refreshWorld();
+    Api.Realtime.on(msg => {
+      if(!state || msg.payload.nest_id !== state.nest_id) return;
+      if(msg.type === "game.changed"){
+        const fresh = Api.db.game[state.nest_id];
+        if(fresh){ state = fresh; state.couple = this.couple(this.me); refreshWorld(); render(); }
+      }
+      if(msg.type === "nest.named"){ this.me.nest.name = msg.payload.name; render(); }
+    });
+  },
+  couple(me){
+    const a = me.members.find(m => m.role === "founder"), b = me.members.find(m => m.role === "partner");
+    return {
+      name: me.nest.name || "Our nest",
+      partnerA: a && a.user ? a.user.display_name : "One",
+      partnerB: b && b.user ? b.user.display_name : "Two",
+      togetherSince: new Date(me.nest.created_at).toISOString().slice(0, 10),
+    };
+  },
+  /* one notification path, so the nudge rules cannot be bypassed by a caller */
+  notify(body){
+    try{
+      if(typeof Notification !== "undefined" && Notification.permission === "granted"){
+        new Notification("NEST", { body });
+        return;
+      }
+    }catch(err){ /* fall through to the in app version */ }
+    toast(body);
+  },
+  openSettings(){
+    const s = $("#sheet");
+    route = { tab:"home", view:null };
+    s.innerHTML = "";
+    const me = this.me;
+    const other = me && me.members.find(m => m.user_id !== Api.Session.userId);
+    s.appendChild(el(`<div class="card">
+      <p class="h">Nest settings</p>
+      <p class="s dim">${esc(me ? (me.nest.name || "Your nest") : "Your nest")}${
+        other && other.user ? " · with " + esc(other.user.display_name) : ""}</p>
+      <button class="btn" id="set-leave" style="margin-top:12px">Leave this nest</button></div>`));
+    s.querySelector("#set-leave").onclick = async () => {
+      if(!confirm("Leave this nest? Your partner keeps it.")) return;
+      await Api.call("POST", "/nests/" + me.nest.id + "/leave", {});
+      location.reload();
+    };
+  },
+};
+
+/* ---- money and scoring ---- */
+const save = () => App.saveGame();
 const today = () => new Date().toISOString().slice(0, 10);
 const uid = () => Math.random().toString(36).slice(2, 10);
-function earn(n, why){ state.wallet.hearts += n; state.wallet.lifetimeEarned += n; save(); toast("+" + n + " hearts, " + why); }
-function spend(n){ if(state.wallet.hearts < n) return false; state.wallet.hearts -= n; save(); return true; }
+/* Spec section 5: a solo user earns nothing and places nothing. The guard is
+   here as well as structural, so a future screen cannot route around it. */
+function paired(){
+  return !!(App.me && App.me.nest && App.me.nest.status === "active" &&
+            App.me.members.filter(m => m.status === "active").length === 2);
+}
+function earn(n, why){
+  if(!paired()) return;
+  state.wallet.coins += n; state.wallet.lifetimeEarned += n;
+  save(); toast("+" + n + " coins, " + why);
+}
+function spend(n){
+  if(!paired()) return false;
+  if(state.wallet.coins < n) return false;
+  state.wallet.coins -= n; save(); return true;
+}
 function charmOf(placed){ return (placed || []).reduce((s, p) => s + ((ITEM_BY_ID[p.itemId] || {}).charm || 0), 0); }
 function daysTogether(since){
   if(!since) return 0;
   return Math.max(0, Math.floor((Date.now() - new Date(since + "T00:00:00").getTime()) / 86400000));
 }
-function ownCard(s){
-  return { id:"mine", name:s.couple.name, partners:s.couple.partnerA + " and " + s.couple.partnerB,
-    since:s.couple.togetherSince, tagline:s.showcase.tagline || "Still building.", likes:0, mine:true, placed:s.house.placed };
+function ownCard(g){
+  const c = g.couple || { name:"Our nest", partnerA:"One", partnerB:"Two", togetherSince:today() };
+  return { id:"mine", name:c.name, partners:c.partnerA + " and " + c.partnerB,
+    since:c.togetherSince, tagline:g.showcase.tagline || "Still building.", likes:0, mine:true, placed:g.house.placed };
 }
 function currentDomeState(){
   if(!state.streak.lastCheckIn) return "new";
@@ -117,7 +196,7 @@ function currentDomeState(){
 
 /* ---- the world ---- */
 function refreshWorld(){
-  if(!Diorama.ready) return;
+  if(!Diorama.ready || !state) return;
   const season = seasonNow();
   // setLot measures the lot, applyState draws the terrain into it, so the
   // order matters: the ground has to be built after the world is sized
@@ -130,6 +209,8 @@ function refreshWorld(){
     Diorama.applyState(viewingLot.stateId || "steady", season);
     return;
   }
+  const nest = App.me && App.me.nest;
+  if(nest) Diorama.setBase(nest.base_material, nest.terrain_type);
   const st = currentDomeState();
   Diorama.setLot(state.house, state.couple, SEASON_STATES[st].label.toLowerCase() + " · " + currentStreak() + " days");
   Diorama.applyState(st, season);
@@ -160,27 +241,6 @@ function go(tab, view){
 }
 
 /* ---- screens ---- */
-function screenSetup(root){
-  root.appendChild(el(`<div class="card">
-    <p class="h">Make your nest</p>
-    <p class="s dim">Two names and a date. Everything else you build.</p>
-    <label class="f"><span>What do you call it</span><input id="f-name" placeholder="The long room" maxlength="28"></label>
-    <label class="f"><span>One of you</span><input id="f-a" placeholder="Robin" maxlength="14"></label>
-    <label class="f"><span>The other</span><input id="f-b" placeholder="Sasha" maxlength="14"></label>
-    <label class="f"><span>Together since</span><input id="f-since" type="date"></label>
-    <button class="btn go" id="f-go">Move in</button></div>`));
-  root.querySelector("#f-go").onclick = async () => {
-    const a = root.querySelector("#f-a").value.trim(), b = root.querySelector("#f-b").value.trim();
-    if(!a || !b) return toast("Both names, please");
-    const name = root.querySelector("#f-name").value.trim();
-    const since = root.querySelector("#f-since").value;
-    state = freshState({ name:name || a + " and " + b, partnerA:a, partnerB:b, togetherSince:since || today() });
-    await save();
-    refreshWorld();
-    go("home");
-  };
-}
-
 function screenHome(root){
   const st = currentDomeState(), s = SEASON_STATES[st], season = seasonNow();
   rollCheckinDay();
@@ -197,8 +257,8 @@ function screenHome(root){
     root.appendChild(c);
   }
   root.appendChild(el(`<div class="stats">
-    <div class="stat"><b>${state.wallet.hearts.toLocaleString()}</b><span>hearts</span></div>
-    <div class="stat"><b>${charmOf(state.house.placed)}</b><span>charm</span></div>
+    <div class="stat"><b>${state.wallet.coins.toLocaleString()}</b><span>coins</span></div>
+    <div class="stat"><b>${state.bond}</b><span>bond</span></div>\n    <div class="stat"><b>${charmOf(state.house.placed)}</b><span>charm</span></div>
     <div class="stat"><b>${daysTogether(state.couple.togetherSince).toLocaleString()}</b><span>days</span></div></div>`));
   Object.values(GAMES).forEach(g => {
     const b = el(`<button class="row"><img src="${Offscreen.icon(g.id === "checkin" ? "clock" : g.id === "duel" ? "heartst" : "cat", 96)}" alt="">
@@ -223,7 +283,7 @@ function screenPlay(root){
     b.onclick = () => { activeGame = null; go("play", { game:g.id }); };
     root.appendChild(b);
   });
-  root.appendChild(el(`<p class="s dim mid">${state.stats.gamesPlayed} rounds played · ${state.wallet.lifetimeEarned.toLocaleString()} hearts earned</p>`));
+  root.appendChild(el(`<p class="s dim mid">${state.stats.gamesPlayed} rounds played · ${state.wallet.lifetimeEarned.toLocaleString()} coins earned</p>`));
 }
 
 function screenBuild(root){
@@ -234,7 +294,7 @@ function screenBuild(root){
       ${esc(r.name)}${open ? "" : " · " + r.price}</button>`);
     b.onclick = () => {
       if(open){ shopFilter = r.id; render(); return; }
-      if(state.wallet.hearts < r.price) return toast("Need " + (r.price - state.wallet.hearts) + " more hearts");
+      if(state.wallet.coins < r.price) return toast("Need " + (r.price - state.wallet.coins) + " more coins");
       spend(r.price);
       state.house.rooms[r.id].unlocked = true;
       shopFilter = r.id;
@@ -282,12 +342,12 @@ function screenBuild(root){
   root.appendChild(el(`<p class="lbl">Workshop</p>`));
   const grid = el(`<div class="grid"></div>`);
   CATALOGUE.filter(i => i.room === shopFilter).forEach(item => {
-    const afford = state.wallet.hearts >= item.price;
+    const afford = state.wallet.coins >= item.price;
     const c = el(`<div class="tile buy"><img src="${Offscreen.icon(item.id, 128)}" alt="">
       <span>${esc(item.name)}</span><em>${item.charm} charm</em>
       <button class="btn sm ${afford ? "go" : ""}" ${afford ? "" : "disabled"}>${item.price}</button></div>`);
     c.querySelector("button").onclick = () => {
-      if(!spend(item.price)) return toast("Not enough hearts");
+      if(!spend(item.price)) return toast("Not enough coins");
       state.house.inventory.push({ instanceId:uid(), itemId:item.id });
       save(); toast(item.name + " delivered"); render();
     };
@@ -349,16 +409,12 @@ async function render(){
   const sheet = $("#sheet");
   sheet.innerHTML = "";
   const bar = $("#bar"), tabs = $("#tabs"), tools = $("#tools");
-  if(!state){
-    bar.hidden = tabs.hidden = tools.hidden = true;
-    screenSetup(sheet);
-    return;
-  }
+  if(!state) return;
   bar.hidden = tabs.hidden = tools.hidden = false;
   bar.innerHTML = "";
   bar.appendChild(el(`<div class="barin"><div><p class="brand">NEST</p>
-    <p class="s dim">${esc(state.couple.name)}</p></div>
-    <span class="purse">${state.wallet.hearts.toLocaleString()}</span></div>`));
+    <p class="s dim">${esc((App.me && App.me.nest.name) || state.couple.name)}</p></div>
+    <span class="purse">${state.wallet.coins.toLocaleString()}</span></div>`));
   tabs.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", String(b.dataset.tab === route.tab)));
   if(route.tab === "home") screenHome(sheet);
   else if(route.tab === "play") screenPlay(sheet);
@@ -366,12 +422,13 @@ async function render(){
   else await screenShowcase(sheet);
 }
 
-/* ---- boot ---- */
-(async function boot(){
-  state = await Store.load();
+/* ---- boot ----
+   onboarding.js loads after this file, so boot waits for the document
+   rather than running the moment app.js is parsed */
+addEventListener("DOMContentLoaded", async function boot(){
   Diorama.init($("#stage"));
   Diorama.onPlace = spot => {
-    if(!held) return;
+    if(!held || !paired()) return;
     state.house.placed.push({ instanceId:held.instanceId, itemId:held.itemId, room:spot.room, x:spot.x, y:spot.y, rot:held.rot });
     Diorama.addProp(state.house.placed[state.house.placed.length - 1]);
     held = null;
@@ -379,7 +436,7 @@ async function render(){
     save(); render();
   };
   Diorama.onPick = p => {
-    if(held || viewingLot) return;
+    if(held || viewingLot || !paired()) return;
     state.house.placed = state.house.placed.filter(q => q.instanceId !== p.instanceId);
     Diorama.removeProp(p.instanceId);
     held = { instanceId:p.instanceId, itemId:p.itemId, rot:p.rot };
@@ -397,9 +454,37 @@ async function render(){
     go(b.dataset.tab);
   });
   $("#devbtn").onclick = () => openBible();
-  if(state) refreshWorld();
-  render();
-})();
+  $("#funbtn").onclick = () => openFunnel();
+  setTimeout(() => { const sp = $("#splash"); if(sp) sp.classList.add("gone"); }, 380);
+  Onboard.begin();
+});
+
+/* ---- the funnel, spec section 9 ---- */
+function openFunnel(){
+  const wrap = $("#dev");
+  wrap.hidden = false;
+  wrap.innerHTML = "";
+  const rate = Track.pairedActivationRate(), lat = Track.inviteLatency();
+  const head = el(`<div class="devhead"><div><p class="h">Funnel</p>
+    <p class="s dim">paired activation ${(rate * 100).toFixed(0)}% · invite latency ${
+      lat === null ? "no pair yet" : Math.round(lat / 1000) + "s"}</p></div>
+    <button class="btn sm" id="devclose">Close</button></div>`);
+  wrap.appendChild(head);
+  wrap.querySelector("#devclose").onclick = () => { wrap.hidden = true; };
+  const list = el(`<div class="devlist"></div>`);
+  Track.funnel().forEach(step => {
+    list.appendChild(el(`<div class="devrow ${step.n ? "ok" : "bad"}">
+      <div><p class="s"><b>${esc(step.label)}</b> · ${step.n}</p>
+      <p class="s dim">${esc(step.name)}</p></div></div>`));
+  });
+  wrap.appendChild(list);
+  const raw = el(`<div class="devlist" style="margin-top:12px"></div>`);
+  Track.log.slice(-24).reverse().forEach(e => {
+    raw.appendChild(el(`<div class="devrow"><div><p class="s">${esc(e.name)}</p>
+      <p class="s dim">${esc(JSON.stringify(e.props))}</p></div></div>`));
+  });
+  wrap.appendChild(raw);
+}
 
 /* ---- the section 16 panel ---- */
 function openBible(){

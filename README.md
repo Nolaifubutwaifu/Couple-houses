@@ -49,11 +49,11 @@ follow the real calendar month.
 
 | Game | How it pays |
 | --- | --- |
-| Daily check in | both partners tap in once a day. 25 hearts plus 5 a day of streak, capped at 100 |
-| Trivia duel | one answers 6 questions about themselves, passes the phone, the other guesses. 15 a match, 30 for a sweep |
-| Memory match | solo pairs, played with the actual props. 60 hearts at par, floor of 10 |
+| Daily check in | both partners tap in once a day. 25 coins plus 5 a day of streak, capped at 100, and a bond |
+| Trivia duel | one answers 6 questions about themselves, passes the phone, the other guesses. 15 coins a match, 30 for a sweep |
+| Memory match | solo pairs, played with the actual props. 60 coins at par, floor of 10 |
 
-Rooms unlock at 500, 900 and 1400 hearts, and the dome physically grows to fit
+Rooms unlock at 500, 900 and 1400 coins, and the dome physically grows to fit
 whatever has been built. Charm summed over placed props is the public score, and
 the mementos (photo wall, heart statue, framed vows) are where it really moves,
 so the street ranks time and effort rather than tidiness.
@@ -111,6 +111,78 @@ Honest list, so nobody mistakes a shortcut for a decision.
 - **The dome is optically neutral.** Distortion is prettier and costs a render
   target; not worth it at this stage.
 
+## Onboarding, authentication and pairing
+
+Built to the onboarding spec. The flow exists to get two people into one nest,
+so the invite is the conversion event and the solo state is deliberately inert.
+
+**Try the pairing for real.** Open the page, go through to the invite code, then
+open a second browser tab on the same page with `?j=YOURCODE` on the end. The
+second tab is a second person: tabs share the store but not the session, so they
+authenticate separately, claim, confirm each other, and watch the same ceremony.
+That is the actual two person handshake, not a mock of it.
+
+**The flow.** Cold open onto a live demo nest with no interface for 1.2 seconds,
+three intro beats over camera moves (300ms in, 2.6s hold, 250ms out, skippable
+in one tap and never replayed), auth, name and birthday, the pair fork, the
+invite or the code, mutual confirm, the ceremony, the first ritual, the first
+placement, then the notification primer. Cold install to the share sheet
+measures about 20 seconds against the spec's 45.
+
+**What is enforced rather than merely drawn**
+
+- Codes are six characters from the spec's alphabet, no I L O 0 or 1, single
+  use, locked to the first claimant, seven day expiry, and regenerating revokes
+  the previous one.
+- Joining is never done by code alone. Both people confirm.
+- A nest can never hold three active members. The check re-reads the committed
+  store, so a second tab racing the same code loses.
+- Under sixteen cannot create or join, and the block has no retry loop back to
+  the date field, because a retry loop just teaches the workaround.
+- A solo user earns nothing and places nothing. That is structural, since the
+  main app is only reachable through a completed pairing, and there is a second
+  guard in `earn`, `spend` and the placement handlers so a future screen cannot
+  route around it.
+- The waiting state allows exactly two changes, the base material and the
+  terrain, neither of which touches the interior.
+- Nudges fire at 24 hours, 72 hours and 7 days, stop at three, and only ever
+  reach the founder. Nothing is ever sent to the person who has not opted in.
+- The ceremony flag goes up at pairing and only comes down when the sequence has
+  played all the way through, so a client that was offline or died halfway gets
+  the whole thing next launch and never half of it.
+
+**What cannot exist in a page, and what stands in for it**
+
+Honest list, because these are the parts a real build has to do properly.
+
+- **Apple and Google sign in.** No OAuth can run here. A stand in sheet asks for
+  an account handle and the same handle restores the same identity, which is
+  what makes the reinstall case testable. The `POST /auth/session` shape is the
+  real one.
+- **Email codes.** Nothing can send mail from a page, so the six digit code the
+  backend generated is shown on screen, clearly marked. Expiry and the thirty
+  second resend are real.
+- **Push.** The primer is real and calls the browser's permission prompt.
+  Nudges fall back to an in app notice when permission is not granted. There is
+  no device token and no server.
+- **Deferred deep links.** `?j=CODE` is read, stored, and read back after
+  authentication, which delivers a linked user straight to confirm with no
+  manual code entry. What is missing is the app store round trip.
+- **Realtime.** A BroadcastChannel between tabs, with a storage event fallback.
+  A real build needs a socket per nest.
+- **The database constraint.** Enforced in the store layer here. In production
+  the two active membership rule belongs in the schema, not in application code.
+
+**The funnel.** Every event in the spec's list fires, exactly as named, and
+nothing else can: firing an event not on the list logs a warning instead. Tap
+the **%** control on the dome for the funnel, the paired activation rate and the
+invite latency.
+
+**Endpoints.** `src/api.js` implements the spec's routes against the local store
+behind one `Api.call(method, path, body)`. Calls carry real latency so every
+screen has to have something to show while it waits, and nothing blocks longer
+than about 220ms.
+
 ## The two seams
 
 **Storage.** Nothing outside `LocalStore` touches `localStorage`. Swapping in a
@@ -134,8 +206,11 @@ mesh. Balance numbers all sit in one `BALANCE` object in `src/games.js`.
 - `src/props.js` — `bevelBox` and all 32 prop builders
 - `src/diorama.js` — the four layers, camera, lighting, motion, offscreen renders
 - `src/bible.js` — the section 16 checks
+- `src/api.js` — the data model, the endpoints, invite codes, realtime
+- `src/analytics.js` — the funnel, and the only event names that exist
+- `src/onboarding.js` — the cold open through to the notification primer
 - `src/games.js` — the three games and the balance table
-- `src/app.js` — storage, state, screens
+- `src/app.js` — the app once two people are in it
 - `vendor/three.min.js` — pinned r149, so this runs with no network
 - `tools/artifact_build.mjs` — inlines the sources and points three.js at a CDN
   for publishing as a hosted page. `node tools/artifact_build.mjs`

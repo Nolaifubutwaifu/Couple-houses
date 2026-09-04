@@ -37,11 +37,16 @@ function softDisc(colour){
   return new THREE.CanvasTexture(c);
 }
 
+const BASE_COLOUR = { ceramic:"oat", sand:"warmSand", clay:"softClay", cream:"cream" };
+const TERRAIN_COLOUR = { grass:"sage", sand:"warmSand", stone:"mist", snow:"cream" };
+
 const Diorama = {
   ready:false, mode:"home", held:null, heldRot:0,
   yaw:0, yawTarget:0, yawFrom:0, yawT:1,
   zoomStop:1, zoomK:1.16, zoomFrom:1.16, zoomTo:1.16, zoomT:1,
-  spin:0, dragging:false, calm:false,
+  spin:0, dragging:false, calm:false, orbit:0,
+  baseMaterial:null, terrainType:null, pulse:null, frameShift:0,
+  fly:null, haze:null, ceremonyKey:1,
   frames:0, fps:60, _lastFpsAt:0,
 
   /* Section 4 named three stops. Yaw and zoom are both continuous now, so
@@ -107,7 +112,7 @@ const Diorama = {
     prof.push({ x:r, y:-0.18 });
     for(let i = 0; i <= 6; i++){ const a = (i / 6) * Math.PI * 0.5; prof.push({ x:r - 0.18 + Math.cos(a) * 0.18, y:-0.18 + Math.sin(a) * 0.18 }); }
     prof.push({ x:0, y:0 });
-    const base = new THREE.Mesh(lathe(prof, 48), mat("oat"));
+    const base = new THREE.Mesh(lathe(prof, 48), mat(BASE_COLOUR[this.baseMaterial] || "oat"));
     this.plinth.position.set(LOT.cx, 0, LOT.cz);
     this.plinth.add(base);
 
@@ -196,7 +201,7 @@ const Diorama = {
     prof.push({ x:r + 0.16, y:-0.02 });
     // lathe winds from the profile's first point outward, so this has to run
     // in the same direction as the plinth or the whole disc faces away
-    const ground = new THREE.Mesh(lathe(prof.reverse(), 48), mat(season.ground));
+    const ground = new THREE.Mesh(lathe(prof.reverse(), 48), mat(TERRAIN_COLOUR[this.terrainType] || season.ground));
     this.terrain.add(ground);
 
     // growth: flecks of season colour thicken as the streak state climbs
@@ -452,14 +457,108 @@ const Diorama = {
     this.setZoom((near + 1) % 3);
     return this.ZOOM_NAMES[this.zoomStop];
   },
+  /* Section 4 of the onboarding spec moves the camera between intro beats.
+     One tween covers both the zoom and what it is aimed at. */
+  flyTo(opts){
+    this.zoomT = 1;
+    const to = opts.target || this.target.clone();
+    this.fly = {
+      t:0, ms:(opts.ms || 1800) / 1000, done:opts.done,
+      fromK:this.zoomK, toK:opts.zoomK === undefined ? this.zoomK : opts.zoomK,
+      from:this.target.clone(), to:new THREE.Vector3(to.x, to.y, to.z),
+    };
+  },
+  roomCentre(id){
+    const r = ROOM_BY_ID[id] || ROOMS[0];
+    return new THREE.Vector3(r.ox + r.w * TILE / 2, 1.0, r.oz + r.h * TILE / 2);
+  },
+  lotCentre(){ return new THREE.Vector3(LOT.cx, LOT.radius * 0.2, LOT.cz); },
+
+  /* Section 7 of the onboarding spec, the ceremony. Five beats, about six
+     seconds, and it either plays in full or it does not play at all. */
+  playCeremony(itemId, onStep){
+    const step = n => { if(onStep) onStep(n); };
+    if(!this.haze){
+      this.haze = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        new THREE.MeshBasicMaterial({ color:0xe8eef0, transparent:true, opacity:0, depthWrite:false, side:THREE.BackSide })
+      );
+      this.lot.add(this.haze);
+    }
+    this.haze.scale.setScalar(LOT.radius);
+    this.haze.position.set(LOT.cx, 0, LOT.cz);
+    this.haze.material.opacity = 0.92;
+    this.haze.visible = true;
+    const key0 = 0.16;
+    this.key.intensity = key0;
+    this.fill.intensity = 0.2;
+    step(1);
+    const t0 = performance.now();
+    const run = () => {
+      const t = (performance.now() - t0) / 1000;
+      // 2: fog clears from the centre outward, 1.4s
+      const fog = Math.min(1, t / 1.4);
+      this.haze.material.opacity = 0.92 * (1 - easeInOutSine(fog));
+      // 3: key light rises to full warmth over 1.2s, starting as the fog goes
+      const lit = Math.max(0, Math.min(1, (t - 0.9) / 1.2));
+      this.key.intensity = lerp(key0, 0.95, easeOutSine(lit));
+      this.fill.intensity = lerp(0.2, 0.34, easeOutSine(lit));
+      if(t > 1.4 && !this._ceremonyStep2){ this._ceremonyStep2 = 1; step(2); }
+      if(t > 2.6 && !this._ceremonyStep3){ this._ceremonyStep3 = 1; step(3); }
+      // 4: one object drops in with the standard placement spring
+      if(t > 3.2 && !this._ceremonyStep4){
+        this._ceremonyStep4 = 1;
+        step(4);
+      }
+      if(t > 4.6 && !this._ceremonyStep5){ this._ceremonyStep5 = 1; step(5); }
+      if(t < 6){ requestAnimationFrame(run); }
+      else{
+        this.haze.visible = false;
+        this._ceremonyStep2 = this._ceremonyStep3 = this._ceremonyStep4 = this._ceremonyStep5 = 0;
+        step(6);
+      }
+    };
+    requestAnimationFrame(run);
+  },
+
+  setBase(material, terrain){
+    this.baseMaterial = material || null;
+    this.terrainType = terrain || null;
+    if(this.ready){ this.buildPlinth(); this.applyState(this.stateId || "resting", this.season || seasonNow()); }
+  },
+  /* the first placement is taught with one pulsing target and no text wall */
+  pulseTarget(spot){
+    if(!this.pulse){
+      this.pulse = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({ color:PALETTE.butter, transparent:true, opacity:0.7, depthWrite:false })
+      );
+      this.pulse.rotation.x = -Math.PI / 2;
+      this.scene.add(this.pulse);
+    }
+    if(!spot){ this.pulse.visible = false; this.pulseSpot = null; return; }
+    const r = ROOM_BY_ID[spot.room];
+    this.pulseSpot = spot;
+    this.pulse.visible = true;
+    this.pulse.scale.set(TILE * 2.2, TILE * 2.2, 1);
+    this.pulse.position.set(r.ox + (spot.x + 1) * TILE, FLOOR_Y + 0.03, r.oz + (spot.y + 1) * TILE);
+  },
+
   applyView(){
     if(!this.container) return;
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if(!w || !h) return;
     const view = this.zoomK * LOT.radius;
     const aspect = w / h;
-    this.camera.left = -view * aspect; this.camera.right = view * aspect;
-    this.camera.top = view; this.camera.bottom = -view;
+    // the dome is as wide as it is tall, so the frustum has to be driven by
+    // whichever screen dimension is smaller, or a tall screen crops the sides
+    const halfW = aspect >= 1 ? view * aspect : view;
+    const halfH = aspect >= 1 ? view : view / aspect;
+    // onboarding runs the dome full height with a sheet over the lower half,
+    // so the frame slides down in world space to lift the dome up on screen
+    const shift = this.frameShift * halfH;
+    this.camera.left = -halfW; this.camera.right = halfW;
+    this.camera.top = halfH - shift; this.camera.bottom = -halfH - shift;
     this.camera.updateProjectionMatrix();
     this.applyCamera();
   },
@@ -598,6 +697,10 @@ const Diorama = {
       this.yawT = Math.min(1, this.yawT + dt / 0.45);
       this.yaw = lerp(this.yawFrom, this.yawTarget, springOut(this.yawT, 0.6));
       this.applyCamera();
+    }else if(!this.dragging && this.orbit){
+      this.yaw += this.orbit * dt;
+      this.yawTarget = this.yaw;
+      this.applyCamera();
     }else if(!this.dragging && this.spin !== 0){
       // a flick keeps going and dies away, the one place a decay curve beats an ease
       this.yaw += this.spin * dt;
@@ -605,6 +708,15 @@ const Diorama = {
       if(Math.abs(this.spin) < 0.06) this.spin = 0;
       this.yawTarget = this.yaw;
       this.applyCamera();
+    }
+    if(this.fly){
+      const f = this.fly;
+      f.t = Math.min(1, f.t + dt / f.ms);
+      const e = easeOutSine(f.t);
+      this.zoomK = lerp(f.fromK, f.toK, e);
+      this.target.set(lerp(f.from.x, f.to.x, e), lerp(f.from.y, f.to.y, e), lerp(f.from.z, f.to.z, e));
+      this.applyView();
+      if(f.t >= 1){ this.fly = null; if(f.done) f.done(); }
     }
     if(this.zoomT < 1){
       this.zoomT = Math.min(1, this.zoomT + dt / 0.4);
@@ -648,6 +760,12 @@ const Diorama = {
     }
     this.weather.children.forEach(c => { if(c.geometry && c.geometry.type === "ConeGeometry") c.rotation.y = t * 0.05; });
     if(this.ghost && this.ghost.visible) this.ghost.position.y = FLOOR_Y + 0.04 + Math.sin(t * 4) * 0.03;
+    if(this.pulse && this.pulse.visible){
+      const b = 0.5 + Math.sin(t * 3.2) * 0.5;
+      this.pulse.material.opacity = 0.32 + b * 0.45;
+      const sc = TILE * (2.0 + b * 0.5);
+      this.pulse.scale.set(sc, sc, 1);
+    }
 
     this.renderer.render(this.scene, this.camera);
     this.frames++;

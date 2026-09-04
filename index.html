@@ -165,11 +165,79 @@ img{display:block;max-width:100%}
 .devrow img{width:44px;height:44px;flex:none;background:var(--oat);border-radius:10px}
 .devrow.bad{background:var(--blush)}
 
+/* ---- onboarding, spec sections 4 and 5 ---- */
+#splash{position:fixed;inset:0;z-index:90;background:var(--cream);display:grid;place-items:center;
+  font-weight:700;font-size:22px;letter-spacing:.34em;color:var(--cocoa);
+  transition:opacity 320ms ease;pointer-events:none}
+#splash.gone{opacity:0}
+
+body.onboarding #stage,body.onboarding .post{height:100vh}
+body.onboarding #sheet,body.onboarding #tabs,body.onboarding #bar,body.onboarding #tools{display:none}
+
+/* the layer never eats a tap meant for the dome: only its own controls do */
+#onboard{position:fixed;inset:0;z-index:12;display:flex;flex-direction:column;
+  justify-content:space-between;pointer-events:none}
+#ob-sheet{pointer-events:auto}
+.ob-tap{position:fixed;inset:0;pointer-events:auto}
+#ob-top{padding:calc(20px + env(safe-area-inset-top)) 22px 0;pointer-events:none}
+#ob-top button,#ob-top .ob-tourbar{pointer-events:auto}
+#ob-sheet{max-height:45vh;overflow-y:auto;padding:0 16px calc(16px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling:touch}
+#ob-sheet:empty{display:none}
+#ob-sheet>*{max-width:520px;margin:0 auto}
+
+.ob-beat{min-height:120px}
+.ob-line{position:relative;z-index:1;margin:0;font-size:24px;font-weight:700;line-height:1.25;max-width:15ch;text-wrap:balance;
+  text-shadow:0 1px 18px rgba(251,243,231,.9),0 1px 3px rgba(251,243,231,.9)}
+.ob-skip{z-index:2;position:fixed;right:18px;bottom:calc(20px + env(safe-area-inset-bottom));opacity:.6;
+  font-weight:700;font-size:14px;color:var(--cocoa);min-height:48px;padding:0 12px}
+.ob-tourbar{display:inline-block;background:var(--card);border-radius:999px;padding:9px 16px;
+  font-size:13px;font-weight:700;box-shadow:var(--shadow)}
+
+.ob-card{background:var(--card);border-radius:26px 26px var(--r) var(--r);box-shadow:0 -8px 30px rgba(74,64,56,.14);
+  padding:18px 18px 16px;margin-top:12px}
+.ob-card.ob-thin{padding:14px}
+.ob-h{margin:0 0 4px;font-size:20px;font-weight:700;text-wrap:balance}
+.ob-auth{display:grid;gap:9px;margin:14px 0 10px}
+.ob-auth .btn{width:100%;display:block}
+.ob-prov{background:var(--oat)}
+.ob-apple{background:var(--ink);color:var(--cream)}
+.ob-legal{font-size:12px;color:var(--cocoa);margin:6px 0 0;line-height:1.5}
+.ob-legal a{color:var(--cocoa)}
+.ob-quiet{display:block;width:100%;margin-top:12px;min-height:48px;font-weight:700;font-size:14px;color:var(--cocoa)}
+.ob-stack{display:grid;gap:10px;margin:14px 0 10px}
+.ob-stack .btn{width:100%;display:block}
+.ob-row2{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
+.ob-row2 .btn{width:100%}
+.ob-sim{background:var(--butter);color:var(--cocoa);border-radius:12px;padding:10px 12px;
+  font-size:12px;font-weight:600;margin:10px 0 0;line-height:1.5}
+.ob-err{background:var(--blush);color:var(--ink);border-radius:12px;padding:10px 12px;
+  font-size:13px;font-weight:700;margin-top:10px}
+
+.ob-code{display:flex;justify-content:center;gap:6px;margin:16px 0 14px}
+.ob-code b{background:var(--oat);border-radius:12px;width:44px;height:56px;display:grid;place-items:center;
+  font-size:24px;font-weight:700;box-shadow:inset 0 -2px 0 rgba(74,64,56,.08)}
+.ob-boxes{display:flex;justify-content:center;gap:7px;margin:14px 0 4px}
+.ob-box{width:46px;height:56px;border:0;border-radius:12px;background:var(--oat);text-align:center;
+  font:700 22px Quicksand,system-ui,sans-serif;color:var(--ink);text-transform:uppercase}
+.ob-box:focus{outline:3px solid var(--coral);outline-offset:2px}
+
+.ob-swatches{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:6px 0}
+.ob-sw{height:46px;border-radius:14px;display:grid;align-items:end;justify-items:center;padding-bottom:6px;
+  box-shadow:var(--shadow)}
+.ob-sw span{font-size:11px;font-weight:700;color:var(--ink);background:var(--card);border-radius:999px;padding:2px 8px}
+.ob-sw[aria-current="true"]{outline:3px solid var(--coral);outline-offset:2px}
+
+.ob-pulse{width:44px;height:44px;border-radius:99px;background:var(--coral);margin:16px auto 4px;
+  animation:obpulse 1.6s ease-in-out infinite}
+@keyframes obpulse{0%,100%{transform:scale(.8);opacity:.55}50%{transform:scale(1);opacity:1}}
+
 @media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }
 @media (min-height:900px){ :root{ --sheet:42vh } }
 </style>
 </head>
 <body>
+<div id="splash"><span>N E S T</span></div>
 <div id="stage"></div>
 <div class="post" id="bloom"></div>
 <div class="post" id="grade"></div>
@@ -181,6 +249,12 @@ img{display:block;max-width:100%}
   <button id="rot-r" title="Turn right">⟳</button>
   <button id="zoom" title="Zoom">home</button>
   <button id="devbtn" title="Asset review, section 16">QA</button>
+  <button id="funbtn" title="Onboarding funnel">%</button>
+</div>
+
+<div id="onboard" hidden>
+  <div id="ob-top"></div>
+  <div id="ob-sheet"></div>
 </div>
 
 <main id="sheet"></main>
@@ -194,11 +268,14 @@ img{display:block;max-width:100%}
 <div id="dev" hidden></div>
 
 <script src="vendor/three.min.js"></script>
+<script src="src/api.js"></script>
+<script src="src/analytics.js"></script>
 <script src="src/palette.js"></script>
 <script src="src/props.js"></script>
 <script src="src/diorama.js"></script>
 <script src="src/bible.js"></script>
 <script src="src/games.js"></script>
 <script src="src/app.js"></script>
+<script src="src/onboarding.js"></script>
 </body>
 </html>
