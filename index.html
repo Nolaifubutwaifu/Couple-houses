@@ -3,1008 +3,202 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Couple Houses</title>
+<title>NEST</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;700&display=swap">
 <style>
+/* NEST :: interface, art bible section 13.
+   One rounded geometric sans, two weights. Cards on cream, no borders,
+   no strokes. Panels never cover the dome. */
 :root{
-  --bg:#faf5ef; --panel:#fffdfa; --panel2:#f6efe6;
-  --ink:#2e2723; --muted:#8a7d73; --line:#e8ddd1;
-  --accent:#d94f78; --accent-ink:#fff; --accent-soft:#fdeaf0;
-  --gold:#c98a2e; --gold-soft:#fbf0da; --ok:#3f8f66; --ok-soft:#e4f3ea;
-  --shadow:0 1px 2px rgba(60,40,30,.06), 0 8px 24px rgba(60,40,30,.07);
-  --r:16px;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#161210; --panel:#221b17; --panel2:#2b221c;
-    --ink:#f3ebe3; --muted:#a5978d; --line:#362b24;
-    --accent:#ff7fa3; --accent-ink:#2a0d18; --accent-soft:#3b2029;
-    --gold:#e8b665; --gold-soft:#3a2d19; --ok:#6cc496; --ok-soft:#1f3529;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#161210; --panel:#221b17; --panel2:#2b221c;
-  --ink:#f3ebe3; --muted:#a5978d; --line:#362b24;
-  --accent:#ff7fa3; --accent-ink:#2a0d18; --accent-soft:#3b2029;
-  --gold:#e8b665; --gold-soft:#3a2d19; --ok:#6cc496; --ok-soft:#1f3529;
-  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.35);
+  --cream:#FBF3E7; --oat:#EFE1CD; --sand:#DCC7A8; --clay:#C4A78B; --cocoa:#8A6E58; --ink:#4A4038;
+  --blush:#F5C9C6; --peach:#F7C9A3; --butter:#F6E3A8; --sage:#BFD6B4; --mist:#B9D3DC; --lilac:#CFC2E0;
+  --coral:#F2735F; --marigold:#F2A33C; --teal:#2F7A73; --plum:#7A4A6B;
+  --card:rgba(251,243,231,.92);
+  --shadow:0 8px 24px rgba(74,64,56,.12);
+  --r:20px;
+  --sheet:45vh; --tabs:64px;
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0}
+html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
 body{
-  background:var(--bg); color:var(--ink);
-  font:15px/1.45 ui-rounded, "SF Pro Rounded", "Segoe UI", Roboto, system-ui, sans-serif;
+  background:linear-gradient(180deg,#EAF0F2 0%,#FBF3E7 100%);
+  color:var(--ink);
+  font:400 15px/1.5 Quicksand, ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
   -webkit-text-size-adjust:100%;
 }
-button{font:inherit;color:inherit;cursor:pointer}
-#app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;padding-bottom:78px}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+img{display:block;max-width:100%}
 
-/* header */
-.top{position:sticky;top:0;z-index:20;background:var(--bg);padding:12px 16px 8px;border-bottom:1px solid var(--line)}
-.top-row{display:flex;align-items:center;gap:10px}
-.crest{width:38px;height:38px;border-radius:12px;background:var(--accent-soft);display:grid;place-items:center;font-size:19px;flex:none}
-.top h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.01em}
-.top .sub{margin:1px 0 0;font-size:12px;color:var(--muted)}
-.purse{margin-left:auto;display:flex;align-items:center;gap:5px;background:var(--accent-soft);color:var(--accent);
-  border-radius:999px;padding:7px 12px;font-weight:800;font-size:14px;white-space:nowrap}
+/* ---- the dome ---- */
+#stage{position:fixed;top:0;left:0;right:0;height:calc(100vh - var(--sheet) - var(--tabs));overflow:hidden}
+#stage canvas{display:block;width:100%;height:100%}
+.post{position:fixed;top:0;left:0;right:0;height:calc(100vh - var(--sheet) - var(--tabs));pointer-events:none}
+#bloom{background:radial-gradient(ellipse at 28% 16%, rgba(255,241,214,.16), transparent 54%);mix-blend-mode:screen}
+#vignette{background:radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(74,64,56,.20) 100%)}
+#grade{background:rgba(247,201,163,.07);mix-blend-mode:multiply}
 
-/* generic */
-.wrap{padding:14px 16px 24px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;margin-bottom:12px}
-.card.tight{padding:11px 13px}
-h2.sec{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:20px 4px 9px;font-weight:700}
-h2.sec:first-child{margin-top:4px}
-.title{font-size:16px;font-weight:700;margin:0 0 3px}
-.muted{color:var(--muted)}
-.small{font-size:13px}
-.tiny{font-size:12px}
-.row{display:flex;align-items:center;gap:10px}
-.spread{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:700;font-size:14px;background:var(--panel2);color:var(--ink);
-  border:1px solid var(--line);transition:transform .08s ease, filter .12s ease}
-.btn:active{transform:scale(.97)}
-.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
-.btn.ghost{background:transparent}
-.btn.wide{width:100%;display:block}
-.btn:disabled{opacity:.45;cursor:not-allowed}
-.btn.sm{padding:7px 12px;font-size:13px;border-radius:10px}
-.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;
-  background:var(--panel2);border:1px solid var(--line)}
-.pill.gold{background:var(--gold-soft);color:var(--gold);border-color:transparent}
-.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
-.pill.love{background:var(--accent-soft);color:var(--accent);border-color:transparent}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
-.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:11px 8px;text-align:center;box-shadow:var(--shadow)}
-.stat b{display:block;font-size:19px;line-height:1.15}
-.stat span{font-size:11px;color:var(--muted)}
+#bar{position:fixed;top:0;left:0;right:0;z-index:6;padding:14px 18px 0}
+.barin{display:flex;align-items:center;gap:12px;max-width:520px;margin:0 auto}
+.brand{margin:0;font-weight:700;font-size:19px;letter-spacing:.16em}
+.purse{margin-left:auto;background:var(--card);border-radius:999px;padding:10px 16px;font-weight:700;
+  box-shadow:var(--shadow);min-height:44px;display:flex;align-items:center}
+.purse::before{content:"";width:11px;height:11px;border-radius:3px 11px 11px 11px;background:var(--coral);
+  transform:rotate(45deg);margin-right:9px}
 
-/* nav */
-.nav{position:fixed;bottom:0;left:0;right:0;z-index:30}
-.nav-in{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);
-  background:var(--panel);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
-.nav button{background:none;border:0;padding:6px 0 5px;display:grid;justify-items:center;gap:2px;color:var(--muted);font-size:11px;font-weight:700;border-radius:12px}
-.nav button i{font-style:normal;font-size:20px;line-height:1}
-.nav button[aria-current="true"]{color:var(--accent);background:var(--accent-soft)}
+#tools{position:fixed;z-index:6;right:14px;top:calc(100vh - var(--sheet) - var(--tabs) - 62px);display:flex;gap:9px}
+#tools button{width:48px;height:48px;border-radius:16px;background:var(--card);box-shadow:var(--shadow);
+  font-weight:700;font-size:13px;display:grid;place-items:center;color:var(--cocoa)}
 
-/* house */
-.roomtabs{display:flex;gap:7px;overflow-x:auto;padding:2px 0 10px;-webkit-overflow-scrolling:touch}
-.roomtabs button{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:700}
-.roomtabs button[aria-current="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent}
-.roomtabs button.locked{color:var(--muted)}
-.floor{display:grid;gap:2px;background:var(--floor-bg,#f0e4d6);border-radius:14px;padding:7px;border:1px solid var(--line);
-  box-shadow:inset 0 0 0 2px rgba(255,255,255,.35), var(--shadow);touch-action:manipulation}
-.tile{background:rgba(255,255,255,.42);border-radius:6px;aspect-ratio:1/1;min-height:0}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tile{background:rgba(255,255,255,.07)}}
-:root[data-theme="dark"] .tile{background:rgba(255,255,255,.07)}
-.floor.placing .tile{outline:1px dashed rgba(0,0,0,.18);cursor:pointer}
-.item{display:grid;place-items:center;border-radius:8px;background:var(--panel);border:1px solid var(--line);
-  font-size:clamp(15px,5.4vw,26px);line-height:1;cursor:pointer;box-shadow:0 1px 2px rgba(60,40,30,.12);overflow:hidden}
-.item.ro{cursor:default}
-.held{position:sticky;bottom:84px;z-index:15;background:var(--accent);color:var(--accent-ink);border-radius:14px;
-  padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow);margin-top:10px}
-.held .btn{background:rgba(255,255,255,.22);border-color:transparent;color:var(--accent-ink)}
-.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:9px}
-.shelf .slot{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:9px 6px;text-align:center;box-shadow:var(--shadow)}
-.shelf .slot .g{font-size:24px;line-height:1.25}
-.shelf .slot .n{font-size:11px;font-weight:700;margin-top:1px}
-.shelf .slot .p{font-size:11px;color:var(--muted)}
-.shelf .slot button{margin-top:6px;width:100%}
-.cat{display:flex;gap:7px;overflow-x:auto;padding-bottom:9px}
-.cat button{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700}
-.cat button[aria-current="true"]{background:var(--ink);color:var(--bg);border-color:transparent}
+/* ---- the sheet, never taller than 45 percent ---- */
+#sheet{position:fixed;left:0;right:0;bottom:var(--tabs);height:var(--sheet);z-index:8;
+  background:var(--cream);border-radius:26px 26px 0 0;box-shadow:0 -8px 30px rgba(74,64,56,.14);
+  padding:16px 16px 20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#sheet::before{content:"";display:block;width:44px;height:5px;border-radius:99px;background:var(--sand);
+  margin:-6px auto 12px}
+#sheet>*{max-width:520px;margin-left:auto;margin-right:auto}
 
-/* games */
-.gamecard{display:flex;gap:12px;align-items:center;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--r);padding:13px;margin-bottom:11px;box-shadow:var(--shadow)}
-.gamecard .g{font-size:27px;width:46px;height:46px;display:grid;place-items:center;background:var(--panel2);border-radius:13px;flex:none}
+#tabs{position:fixed;left:0;right:0;bottom:0;height:var(--tabs);z-index:9;background:var(--cream);
+  display:grid;grid-template-columns:repeat(4,1fr);align-items:center;padding:0 8px calc(env(safe-area-inset-bottom))}
+#tabs button{min-height:48px;border-radius:14px;font-weight:700;font-size:13px;color:var(--clay)}
+#tabs button[aria-current="true"]{color:var(--ink);background:var(--oat)}
+
+/* ---- pieces ---- */
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+.card.mid{text-align:center}
+.h{margin:0;font-weight:700;font-size:16px}
+.s{margin:2px 0 0;font-size:13.5px}
+.dim{color:var(--cocoa)}
+.mid{text-align:center}
+.big{margin:4px 0;font-size:34px;font-weight:700;line-height:1.1}
+.spread{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.lbl{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--clay);margin:16px 4px 8px}
+.note{background:var(--butter);border-radius:14px;padding:11px 14px;font-size:12.5px;font-weight:700;color:var(--cocoa);margin:0 0 12px}
+.good{color:var(--teal)} .miss{color:var(--clay)}
+.line{padding:9px 0}
+.line+.line{border-top:1px solid var(--oat)}
+
+.btn{background:var(--oat);border-radius:14px;padding:13px 18px;font-weight:700;min-height:48px;
+  transition:transform .12s cubic-bezier(.34,1.56,.64,1)}
+.btn:active{transform:scale(.96)}
+.btn.go{background:var(--coral);color:var(--cream);width:100%;display:block}
+.btn.sm{padding:9px 14px;min-height:44px;font-size:13px;border-radius:12px}
+.btn.back{background:none;color:var(--cocoa);padding:4px 0 12px;min-height:36px}
+.btn.back::before{content:"‹  "}
+.btn:disabled{opacity:.4}
+
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px;margin:0 -4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:var(--oat);border-radius:999px;padding:9px 15px;font-size:13px;font-weight:700;
+  color:var(--cocoa);min-height:40px;display:inline-flex;align-items:center;white-space:nowrap}
+.chip.warm{background:var(--blush);color:var(--ink)}
+.chip[aria-current="true"]{background:var(--ink);color:var(--cream)}
+.chip.locked{opacity:.62}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.stat{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:13px 6px;text-align:center}
+.stat b{display:block;font-size:20px;font-weight:700}
+.stat span{font-size:11.5px;color:var(--cocoa)}
+
+.row{display:flex;align-items:center;gap:13px;width:100%;text-align:left;background:var(--card);
+  border-radius:var(--r);box-shadow:var(--shadow);padding:12px;margin-bottom:11px;min-height:48px}
+.row img{width:54px;height:54px;flex:none}
+
+.strip{display:flex;gap:9px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.strip::-webkit-scrollbar{display:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
+.tile{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:8px 6px 10px;text-align:center;
+  min-width:96px;flex:none;min-height:48px}
+.tile img{width:100%;aspect-ratio:1/1;object-fit:contain}
+.tile span{display:block;font-size:11.5px;font-weight:700;line-height:1.25}
+.tile em{display:block;font-style:normal;font-size:11px;color:var(--clay)}
+.tile .btn{margin-top:7px;width:100%;padding:8px 4px}
+
+.held{position:sticky;top:-4px;z-index:3;display:flex;align-items:center;gap:10px;background:var(--coral);
+  color:var(--cream);border-radius:16px;padding:9px 12px;margin-bottom:12px;box-shadow:var(--shadow)}
+.held img{width:40px;height:40px;flex:none}
+.held b{flex:1;font-size:14px}
+.held .s{opacity:.8;font-size:12px}
+.held .btn{background:rgba(251,243,231,.24);color:var(--cream)}
+
+.checks{display:grid;gap:9px;margin-top:12px}
+.check{display:flex;align-items:center;gap:12px;background:var(--oat);border-radius:14px;padding:13px;
+  font-weight:700;min-height:48px}
+.check .tick{width:26px;height:26px;border-radius:9px;background:var(--cream);display:grid;place-items:center;
+  color:var(--teal);flex:none}
+.check[data-on="1"]{background:var(--sage)}
+
+.bar{height:6px;background:var(--oat);border-radius:99px;overflow:hidden;margin:12px 0 2px}
+.bar i{display:block;height:100%;background:var(--coral);border-radius:99px;transition:width .3s cubic-bezier(.34,1.4,.64,1)}
 .opts{display:grid;gap:9px;margin-top:12px}
-.opt{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px;font-weight:600;width:100%}
-.opt[data-state="pick"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
-.opt[data-state="right"]{border-color:transparent;background:var(--ok-soft);color:var(--ok)}
-.opt[data-state="wrong"]{border-color:transparent;background:var(--panel2);color:var(--muted)}
-.bar{height:6px;background:var(--panel2);border-radius:999px;overflow:hidden;margin:12px 0 4px}
-.bar i{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .25s ease}
+.opt{text-align:left;background:var(--oat);border-radius:14px;padding:14px;font-weight:700;width:100%;min-height:48px}
+.opt:active{background:var(--blush)}
 .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
-.mcard{aspect-ratio:1/1;border-radius:13px;border:1px solid var(--line);background:var(--panel2);font-size:26px;
-  display:grid;place-items:center;transition:transform .15s ease}
-.mcard[data-up="1"]{background:var(--panel);transform:rotateY(0)}
-.mcard[data-done="1"]{background:var(--ok-soft);border-color:transparent}
-.mcard span{opacity:0}
-.mcard[data-up="1"] span,.mcard[data-done="1"] span{opacity:1}
-.checks{display:grid;gap:9px;margin-top:11px}
-.check{display:flex;align-items:center;gap:11px;background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:11px 13px;width:100%;text-align:left;font-weight:700}
-.check .box{width:24px;height:24px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;flex:none;font-size:14px}
-.check[data-on="1"]{background:var(--ok-soft);border-color:transparent;color:var(--ok)}
-.check[data-on="1"] .box{border-color:currentColor}
+.mcard{aspect-ratio:1/1;border-radius:14px;background:var(--oat);display:grid;place-items:center;padding:4px;
+  transition:background .2s ease}
+.mcard[data-up="1"]{background:var(--cream)}
+.mcard[data-done="1"]{background:var(--sage)}
+.mcard img{width:100%;height:100%;object-fit:contain}
 
-/* showcase */
-.hcard{position:relative;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-  padding:0;overflow:hidden;margin-bottom:12px;box-shadow:var(--shadow)}
-.hcard .thumb{height:104px;display:flex;align-items:flex-end;gap:3px;padding:9px 11px;font-size:23px;background:var(--panel2)}
-.hcard .meta{padding:11px 13px}
-.hcard .rank{position:absolute;top:9px;left:11px;background:rgba(0,0,0,.55);color:#fff;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:800}
-.notice{background:var(--gold-soft);color:var(--gold);border-radius:12px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-bottom:14px}
-.field{display:block;margin-bottom:12px}
-.field span{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px}
-.field input{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:92px;z-index:60;background:var(--ink);color:var(--bg);
-  padding:10px 16px;border-radius:999px;font-weight:700;font-size:13px;box-shadow:var(--shadow);opacity:0;transition:opacity .2s ease,transform .2s ease;pointer-events:none}
-.toast.on{opacity:1;transform:translateX(-50%) translateY(-6px)}
-.center{text-align:center}
-.hero{text-align:center;padding:26px 8px 8px}
-.hero .big{font-size:44px}
-.hero h2{margin:8px 0 4px;font-size:21px}
-.empty{text-align:center;color:var(--muted);padding:26px 12px;font-size:13.5px}
+.hcard{position:relative;display:block;width:100%;text-align:left;background:var(--card);border-radius:var(--r);
+  box-shadow:var(--shadow);overflow:hidden;margin-bottom:12px;padding:0}
+.hcard img{width:100%;aspect-ratio:2/1;height:auto;object-fit:cover;background:var(--oat)}
+.hcard .meta{padding:12px 14px 14px}
+.hcard .rank{position:absolute;top:10px;left:12px;background:var(--card);border-radius:999px;
+  padding:3px 11px;font-size:12px;font-weight:700}
+
+.f{display:block;margin:12px 0}
+.f span{display:block;font-size:12px;font-weight:700;color:var(--cocoa);margin-bottom:6px}
+.f input{width:100%;padding:13px;border-radius:14px;border:0;background:var(--oat);color:var(--ink);
+  font:inherit;min-height:48px}
+
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sheet) + var(--tabs) + 14px);
+  z-index:20;background:var(--ink);color:var(--cream);padding:11px 18px;border-radius:999px;font-weight:700;
+  font-size:13px;opacity:0;transition:opacity .25s ease, transform .25s cubic-bezier(.34,1.4,.64,1);pointer-events:none}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(-8px)}
+
+#dev{position:fixed;inset:0;z-index:40;background:var(--cream);overflow-y:auto;padding:18px}
+.devhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.devlist{display:grid;gap:8px}
+.devrow{display:flex;align-items:center;gap:11px;background:var(--card);border-radius:14px;padding:9px 12px;box-shadow:var(--shadow)}
+.devrow img{width:44px;height:44px;flex:none;background:var(--oat);border-radius:10px}
+.devrow.bad{background:var(--blush)}
+
+@media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }
+@media (min-height:900px){ :root{ --sheet:42vh } }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="top"></div>
-  <div id="screen" class="wrap"></div>
+<div id="stage"></div>
+<div class="post" id="bloom"></div>
+<div class="post" id="grade"></div>
+<div class="post" id="vignette"></div>
+
+<header id="bar" hidden></header>
+<div id="tools" hidden>
+  <button id="rot-l" title="Turn left">⟲</button>
+  <button id="rot-r" title="Turn right">⟳</button>
+  <button id="zoom" title="Zoom">home</button>
+  <button id="devbtn" title="Asset review, section 16">QA</button>
 </div>
-<nav class="nav" id="nav" hidden><div class="nav-in">
-  <button data-tab="home"><i>🏡</i>Home</button>
-  <button data-tab="play"><i>🎲</i>Play</button>
-  <button data-tab="build"><i>🛠</i>Build</button>
-  <button data-tab="show"><i>🌍</i>Showcase</button>
-</div></nav>
-<div class="toast" id="toast"></div>
-<script>
-"use strict";
-/* ============================================================
-   COUPLE HOUSES  ::  local first prototype
-   Sections: CONFIG / DATA / STORE / STATE / HOUSE / GAMES / SCREENS / BOOT
-   ============================================================ */
 
-/* ---------------- CONFIG ---------------- */
-const BALANCE = {
-  startingHearts: 180,
-  checkInBase: 25,
-  streakBonus: 5,
-  streakBonusCap: 100,
-  duelQuestions: 6,
-  duelPerMatch: 15,
-  duelSweepBonus: 30,
-  memoryPairs: 8,
-  memoryMax: 60,
-  memoryMin: 10,
-  memoryParMoves: 11,
-  memoryStepPenalty: 4,
-};
+<main id="sheet"></main>
+<nav id="tabs" hidden>
+  <button data-tab="home">Home</button>
+  <button data-tab="play">Play</button>
+  <button data-tab="build">Build</button>
+  <button data-tab="show">Street</button>
+</nav>
+<div id="toast"></div>
+<div id="dev" hidden></div>
 
-const SCHEMA_VERSION = 1;
-const STORE_KEY = "couplehouses.v1";
-
-/* ---------------- DATA ---------------- */
-const ROOMS = [
-  { id:"living",  name:"Living Room", w:6, h:4, price:0,    floor:"#f0e2d2", darkFloor:"#3a2c22" },
-  { id:"kitchen", name:"Kitchen",     w:6, h:4, price:500,  floor:"#dfeae4", darkFloor:"#233029" },
-  { id:"bedroom", name:"Bedroom",     w:6, h:4, price:900,  floor:"#e9e0f0", darkFloor:"#2e2638" },
-  { id:"garden",  name:"Garden",      w:7, h:5, price:1400, floor:"#dcecd4", darkFloor:"#243021" },
-];
-const ROOM_BY_ID = Object.fromEntries(ROOMS.map(r => [r.id, r]));
-
-/* Every item: charm feeds the public score. w/h are tile footprint. */
-const CATALOGUE = [
-  // living
-  { id:"sofa",     name:"Sofa",         glyph:"🛋️", price:130, charm:8,  w:2, h:1, room:"living" },
-  { id:"tv",       name:"Big TV",       glyph:"📺", price:170, charm:7,  w:2, h:1, room:"living" },
-  { id:"armchair", name:"Armchair",     glyph:"🪑", price:70,  charm:4,  w:1, h:1, room:"living" },
-  { id:"books",    name:"Bookshelf",    glyph:"📚", price:110, charm:6,  w:1, h:1, room:"living" },
-  { id:"plant",    name:"Fiddle Fig",   glyph:"🪴", price:60,  charm:4,  w:1, h:1, room:"living" },
-  { id:"guitar",   name:"Guitar",       glyph:"🎸", price:150, charm:7,  w:1, h:1, room:"living" },
-  { id:"console",  name:"Game Corner",  glyph:"🎮", price:190, charm:9,  w:1, h:1, room:"living" },
-  { id:"fireplc",  name:"Fireplace",    glyph:"🔥", price:320, charm:14, w:2, h:1, room:"living" },
-  // kitchen
-  { id:"fridge",   name:"Fridge",       glyph:"🧊", price:200, charm:7,  w:1, h:1, room:"kitchen" },
-  { id:"stove",    name:"Stove",        glyph:"🍳", price:180, charm:7,  w:1, h:1, room:"kitchen" },
-  { id:"table",    name:"Dining Table", glyph:"🍽️", price:240, charm:11, w:2, h:1, room:"kitchen" },
-  { id:"coffee",   name:"Coffee Bar",   glyph:"☕", price:150, charm:8,  w:1, h:1, room:"kitchen" },
-  { id:"wine",     name:"Wine Rack",    glyph:"🍷", price:210, charm:9,  w:1, h:1, room:"kitchen" },
-  { id:"bake",     name:"Cake Stand",   glyph:"🧁", price:90,  charm:5,  w:1, h:1, room:"kitchen" },
-  { id:"herbs",    name:"Herb Shelf",   glyph:"🌿", price:70,  charm:4,  w:1, h:1, room:"kitchen" },
-  // bedroom
-  { id:"bed",      name:"Double Bed",   glyph:"🛏️", price:280, charm:13, w:2, h:1, room:"bedroom" },
-  { id:"mirror",   name:"Tall Mirror",  glyph:"🪞", price:120, charm:6,  w:1, h:1, room:"bedroom" },
-  { id:"lamp",     name:"Warm Lamp",    glyph:"💡", price:60,  charm:4,  w:1, h:1, room:"bedroom" },
-  { id:"wardrobe", name:"Wardrobe",     glyph:"🚪", price:190, charm:7,  w:1, h:1, room:"bedroom" },
-  { id:"clock",    name:"Old Clock",    glyph:"🕰️", price:140, charm:7,  w:1, h:1, room:"bedroom" },
-  { id:"flowers",  name:"Fresh Flowers",glyph:"💐", price:80,  charm:6,  w:1, h:1, room:"bedroom" },
-  { id:"cat",      name:"Sleepy Cat",   glyph:"🐈", price:260, charm:12, w:1, h:1, room:"bedroom" },
-  // garden
-  { id:"tree",     name:"Old Tree",     glyph:"🌳", price:170, charm:9,  w:1, h:1, room:"garden" },
-  { id:"tulips",   name:"Tulip Bed",    glyph:"🌷", price:70,  charm:5,  w:1, h:1, room:"garden" },
-  { id:"bench",    name:"Two Seat Bench",glyph:"🪑",price:130, charm:8,  w:2, h:1, room:"garden" },
-  { id:"firepit",  name:"Fire Pit",     glyph:"🔥", price:220, charm:11, w:1, h:1, room:"garden" },
-  { id:"pool",     name:"Plunge Pool",  glyph:"🏊", price:520, charm:20, w:2, h:1, room:"garden" },
-  { id:"dog",      name:"Dog House",    glyph:"🐕", price:280, charm:12, w:1, h:1, room:"garden" },
-  { id:"fountain", name:"Fountain",     glyph:"⛲", price:400, charm:17, w:1, h:1, room:"garden" },
-  // mementos, allowed anywhere, this is where the commitment score really moves
-  { id:"photos",   name:"Photo Wall",   glyph:"🖼️", price:300, charm:22, w:1, h:1, room:"any", memento:true },
-  { id:"heartst",  name:"Heart Statue", glyph:"💖", price:450, charm:30, w:1, h:1, room:"any", memento:true },
-  { id:"vows",     name:"Framed Vows",  glyph:"📜", price:600, charm:40, w:1, h:1, room:"any", memento:true },
-];
-const ITEM_BY_ID = Object.fromEntries(CATALOGUE.map(i => [i.id, i]));
-
-/* {A} is replaced with the answering partner's name */
-const QUESTIONS = [
-  { q:"Friday night, {A} gets to pick. What happens?", o:["Couch and takeaway","Dinner out","Friends over","Early night"] },
-  { q:"{A}'s ideal holiday is...", o:["Beach and nothing","A big city","Hiking somewhere cold","Road trip"] },
-  { q:"What does {A} do first thing in the morning?", o:["Check the phone","Coffee","Snooze again","Straight to the shower"] },
-  { q:"{A}'s comfort food?", o:["Pizza","Noodles","Chocolate","Toast, honestly"] },
-  { q:"Which chore does {A} secretly hate most?", o:["Dishes","Laundry","Bins","Vacuuming"] },
-  { q:"How does {A} say sorry?", o:["Words","Food","A hug","Doing the chore"] },
-  { q:"{A}'s dream first home?", o:["Beach shack","City apartment","Farmhouse","Tiny cabin"] },
-  { q:"What is {A} most likely to overspend on?", o:["Food","Clothes","Gadgets","Trips"] },
-  { q:"How early does {A} arrive to things?", o:["Way early","Right on time","Five late","Twenty late"] },
-  { q:"{A} in an argument tends to...", o:["Talk it out now","Go quiet","Make a joke","Need a walk"] },
-  { q:"Pick {A}'s weekend energy.", o:["Plans all day","One nice thing","Nothing at all","Depends on you"] },
-  { q:"{A}'s go to karaoke choice?", o:["A power ballad","Something 2000s","Refuses to sing","Rap, badly"] },
-  { q:"What would {A} save from a fire, after you?", o:["Photos","The laptop","A gift from you","The pet"] },
-  { q:"{A}'s coffee order?", o:["Flat white","Long black","Something sweet","Tea, actually"] },
-  { q:"Which pet would {A} bring home tomorrow?", o:["Dog","Cat","Something small","No pets"] },
-  { q:"{A}'s love language leans...", o:["Words","Touch","Gifts","Doing things"] },
-  { q:"Best gift {A} ever got from you?", o:["Something handmade","A trip","A surprise","A small daily thing"] },
-  { q:"{A} plans a date. Budget is nothing. So...", o:["Picnic","Long drive","Cook at home","Free gig"] },
-  { q:"What is {A} watching when you are not home?", o:["Reality TV","A documentary","Old comfort show","Sport"] },
-  { q:"{A}'s biggest ick in a house?", o:["Mess","Bad lighting","Loud neighbours","No natural light"] },
-  { q:"How does {A} sleep?", o:["Starfish","Curled up","Half off the bed","Clinging to you"] },
-  { q:"{A} would rather give up...", o:["Coffee","Streaming","Social media","Dessert"] },
-  { q:"On a plane, {A} picks...", o:["Window","Aisle","Whatever is free","Whatever you do not want"] },
-  { q:"{A}'s reaction to a surprise party?", o:["Loves it","Hates it","Fake loves it","Cries"] },
-  { q:"Which room matters most to {A}?", o:["Kitchen","Bedroom","Living room","Outside"] },
-  { q:"{A}'s texting style?", o:["Paragraphs","One word","Voice notes","Memes only"] },
-  { q:"If {A} won money, first move?", o:["Save it","A trip","Pay off things","Something silly"] },
-  { q:"{A} is hungry and tired. Best fix?", o:["Snack","Nap","Both, in order","Being left alone"] },
-  { q:"What makes {A} laugh hardest?", o:["Your impressions","Animal videos","Dark humour","Bad puns"] },
-  { q:"{A}'s hidden talent?", o:["Cooking","Remembering everything","Directions","Making friends fast"] },
-  { q:"Sunday morning, {A} wants...", o:["A sleep in","Breakfast out","A walk","Chores done early"] },
-  { q:"{A}'s worst habit, admitted?", o:["Being late","Interrupting","Leaving cups everywhere","Doomscrolling"] },
-  { q:"Which season is {A}?", o:["Summer","Autumn","Winter","Spring"] },
-  { q:"{A} decorates the house in...", o:["Warm and cosy","Clean and minimal","Colour everywhere","Plants everywhere"] },
-  { q:"How does {A} handle a bad day?", o:["Talk about it","Distraction","Sleep","Food"] },
-  { q:"What does {A} think you do best?", o:["Listen","Make them laugh","Look after them","Push them"] },
-];
-
-/* Seeded neighbours so the showcase is not an empty room on day one */
-const SEED_HOUSES = [
-  { id:"seed-1", name:"The Tan House", partners:"Mai and Ollie", since:"2019-03-02", likes:412, tagline:"Six years, one very loud kettle.",
-    placed:[["sofa","living",0,1],["tv","living",3,0],["books","living",5,2],["fireplc","living",0,3],["plant","living",2,2],["photos","living",4,3],["heartst","living",5,0]] },
-  { id:"seed-2", name:"Flat 9B", partners:"Dee and Sam", since:"2022-11-18", likes:188, tagline:"Small flat, big plans.",
-    placed:[["sofa","living",1,2],["console","living",4,1],["plant","living",0,0],["armchair","living",3,3],["photos","living",5,3]] },
-  { id:"seed-3", name:"Hillside", partners:"Ana and Rue", since:"2016-06-25", likes:903, tagline:"Ten years and the tree is finally big.",
-    placed:[["fireplc","living",2,0],["sofa","living",0,2],["books","living",5,1],["guitar","living",4,3],["vows","living",5,3],["heartst","living",0,0],["photos","living",3,2]] },
-  { id:"seed-4", name:"The Boat Shed", partners:"Kip and Noor", since:"2021-01-09", likes:265, tagline:"We argue about the thermostat.",
-    placed:[["sofa","living",2,1],["armchair","living",0,0],["plant","living",5,0],["tv","living",3,3],["photos","living",0,3]] },
-  { id:"seed-5", name:"Number 12", partners:"Jo and Ines", since:"2023-08-14", likes:97, tagline:"Two years in, still buying chairs.",
-    placed:[["armchair","living",1,1],["armchair","living",2,1],["plant","living",4,2],["books","living",0,3]] },
-  { id:"seed-6", name:"The Long Room", partners:"Bea and Cass", since:"2014-05-01", likes:1240, tagline:"Everything in here has a story.",
-    placed:[["vows","living",0,0],["heartst","living",5,0],["photos","living",2,0],["sofa","living",1,2],["fireplc","living",4,3],["clock","living",0,3],["guitar","living",3,1]] },
-];
-
-/* ---------------- STORE ----------------
-   The only place that talks to persistence. Swap LocalStore for a
-   SupabaseStore implementing these four methods and nothing else changes. */
-const LocalStore = {
-  async load(){
-    try{
-      const raw = localStorage.getItem(STORE_KEY);
-      if(!raw) return null;
-      return migrate(JSON.parse(raw));
-    }catch(err){ console.warn("load failed, starting fresh", err); return null; }
-  },
-  async save(state){
-    try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); return true; }
-    catch(err){ console.warn("save failed, session is memory only", err); return false; }
-  },
-  async listShowcase(state){
-    const mine = state && state.showcase.published ? [ownHouseCard(state)] : [];
-    const seeds = SEED_HOUSES.map(h => ({
-      id:h.id, name:h.name, partners:h.partners, since:h.since, tagline:h.tagline,
-      likes:h.likes, mine:false, placed:h.placed.map(p => ({ itemId:p[0], room:p[1], x:p[2], y:p[3], rot:0 })),
-    }));
-    return [...mine, ...seeds].map(h => ({ ...h, charm:charmOf(h.placed) }))
-      .sort((a,b) => b.charm - a.charm);
-  },
-  async likeHouse(state, houseId){
-    const given = state.showcase.likesGiven;
-    const at = given.indexOf(houseId);
-    if(at >= 0) given.splice(at,1); else given.push(houseId);
-    await this.save(state);
-    return at < 0;
-  },
-};
-const Store = LocalStore;
-
-function migrate(s){
-  if(!s || typeof s !== "object") return null;
-  if(!s.schemaVersion) s.schemaVersion = SCHEMA_VERSION;
-  // future shape changes land here, version by version
-  return s;
-}
-
-/* ---------------- STATE ---------------- */
-let state = null;
-let route = { tab:"home", view:null };
-let held = null;         // { itemId, instanceId, rot, fromPlaced }
-let activeRoom = "living";
-let shopFilter = "living";
-let activeGame = null;
-
-function freshState(couple){
-  const rooms = {};
-  ROOMS.forEach(r => { rooms[r.id] = { unlocked: r.price === 0 }; });
-  return {
-    schemaVersion: SCHEMA_VERSION,
-    couple,
-    wallet: { hearts: BALANCE.startingHearts, lifetimeEarned: 0 },
-    streak: { count:0, lastCheckIn:null, day:null, a:false, b:false },
-    house: { rooms, inventory: [], placed: [] },
-    showcase: { published:false, likesGiven:[], tagline:"" },
-    stats: { gamesPlayed:0, duelsPlayed:0, bestDuel:0 },
-  };
-}
-
-const save = () => Store.save(state);
-const today = () => new Date().toISOString().slice(0,10);
-const uid = () => Math.random().toString(36).slice(2,10);
-
-function earn(amount, why){
-  state.wallet.hearts += amount;
-  state.wallet.lifetimeEarned += amount;
-  save();
-  toast(`+${amount} ♥  ${why}`);
-}
-function spend(amount){
-  if(state.wallet.hearts < amount) return false;
-  state.wallet.hearts -= amount;
-  save();
-  return true;
-}
-function charmOf(placed){
-  return (placed || []).reduce((sum,p) => sum + ((ITEM_BY_ID[p.itemId] || {}).charm || 0), 0);
-}
-function daysTogether(since){
-  if(!since) return 0;
-  const ms = Date.now() - new Date(since + "T00:00:00").getTime();
-  return Math.max(0, Math.floor(ms / 86400000));
-}
-function ownHouseCard(s){
-  return {
-    id:"mine", name:s.couple.name, partners:`${s.couple.partnerA} and ${s.couple.partnerB}`,
-    since:s.couple.togetherSince, tagline:s.showcase.tagline || "Still building.",
-    likes:0, mine:true, placed:s.house.placed,
-  };
-}
-
-/* ---------------- HOUSE ----------------
-   renderHouse is the seam. A Sims style animated renderer replaces this
-   one function plus its CSS and touches nothing else in the app. */
-function footprint(item, rot){
-  return rot % 2 === 0 ? { w:item.w, h:item.h } : { w:item.h, h:item.w };
-}
-function canPlace(placed, roomId, x, y, w, h, ignoreId){
-  const room = ROOM_BY_ID[roomId];
-  if(x < 0 || y < 0 || x + w > room.w || y + h > room.h) return false;
-  return !placed.some(p => {
-    if(p.room !== roomId || p.instanceId === ignoreId) return false;
-    const f = footprint(ITEM_BY_ID[p.itemId], p.rot);
-    return x < p.x + f.w && x + w > p.x && y < p.y + f.h && y + h > p.y;
-  });
-}
-function renderHouse(container, house, roomId, opts){
-  opts = opts || {};
-  const room = ROOM_BY_ID[roomId];
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches
-    && document.documentElement.getAttribute("data-theme") !== "light";
-  const floor = document.createElement("div");
-  floor.className = "floor" + (opts.placing ? " placing" : "");
-  floor.style.setProperty("--floor-bg", dark ? room.darkFloor : room.floor);
-  floor.style.gridTemplateColumns = `repeat(${room.w}, 1fr)`;
-  floor.style.gridTemplateRows = `repeat(${room.h}, 1fr)`;
-
-  for(let y = 0; y < room.h; y++){
-    for(let x = 0; x < room.w; x++){
-      const t = document.createElement("div");
-      t.className = "tile";
-      t.style.gridColumn = String(x + 1);
-      t.style.gridRow = String(y + 1);
-      if(opts.onTile) t.onclick = () => opts.onTile(x, y);
-      floor.appendChild(t);
-    }
-  }
-  (house.placed || []).filter(p => p.room === roomId).forEach(p => {
-    const item = ITEM_BY_ID[p.itemId];
-    if(!item) return;
-    const f = footprint(item, p.rot);
-    const el = document.createElement("div");
-    el.className = "item" + (opts.onItem ? "" : " ro");
-    el.textContent = item.glyph;
-    el.title = item.name;
-    el.style.gridColumn = `${p.x + 1} / span ${f.w}`;
-    el.style.gridRow = `${p.y + 1} / span ${f.h}`;
-    if(opts.onItem) el.onclick = e => { e.stopPropagation(); opts.onItem(p); };
-    floor.appendChild(el);
-  });
-  container.appendChild(floor);
-  return floor;
-}
-
-/* ---------------- UI HELPERS ---------------- */
-const $ = sel => document.querySelector(sel);
-function el(html){
-  const t = document.createElement("template");
-  t.innerHTML = html.trim();
-  // a template with several roots comes back as a fragment, so callers can
-  // append one block; query it before appending, a fragment empties on insert
-  return t.content.children.length > 1 ? t.content : t.content.firstElementChild;
-}
-function esc(s){
-  return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
-}
-let toastTimer = null;
-function toast(msg){
-  const t = $("#toast");
-  t.textContent = msg;
-  t.classList.add("on");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("on"), 1900);
-}
-function go(tab, view){
-  route = { tab, view: view || null };
-  window.scrollTo(0,0);
-  render();
-}
-
-/* ---------------- GAMES ---------------- */
-function currentStreak(){
-  const last = state.streak.lastCheckIn;
-  if(!last) return 0;
-  const yest = new Date(Date.now() - 86400000).toISOString().slice(0,10);
-  return (last === today() || last === yest) ? state.streak.count : 0;
-}
-function rollCheckinDay(){
-  const d = today();
-  if(state.streak.day !== d){ state.streak.day = d; state.streak.a = false; state.streak.b = false; }
-}
-function maybeCompleteCheckin(){
-  const d = today();
-  if(state.streak.lastCheckIn === d) return;
-  if(!(state.streak.a && state.streak.b)) return;
-  const yest = new Date(Date.now() - 86400000).toISOString().slice(0,10);
-  state.streak.count = state.streak.lastCheckIn === yest ? state.streak.count + 1 : 1;
-  state.streak.lastCheckIn = d;
-  const bonus = Math.min(BALANCE.streakBonus * state.streak.count, BALANCE.streakBonusCap);
-  state.stats.gamesPlayed++;
-  earn(BALANCE.checkInBase + bonus, `day ${state.streak.count} together`);
-}
-
-const GAMES = {
-  checkin: {
-    id:"checkin", title:"Daily Check In", glyph:"📅",
-    blurb:"Both of you tap in once a day. Miss a day and the streak resets.",
-    render(root){
-      rollCheckinDay();
-      const s = state.streak;
-      const doneToday = s.lastCheckIn === today();
-      const next = BALANCE.checkInBase + Math.min(BALANCE.streakBonus * (currentStreak() + 1), BALANCE.streakBonusCap);
-      root.appendChild(el(`
-        <div class="card">
-          <div class="spread">
-            <div><p class="title">Day ${currentStreak()} streak</p>
-            <p class="small muted">${doneToday ? "Checked in for today. See you tomorrow." : `Both tap in to claim ${next} ♥`}</p></div>
-            <span class="pill gold">🔥 ${currentStreak()}</span>
-          </div>
-          <div class="checks"></div>
-        </div>`));
-      const checks = root.querySelector(".checks");
-      [["a", state.couple.partnerA], ["b", state.couple.partnerB]].forEach(([key, name]) => {
-        const on = s[key] || doneToday;
-        const b = el(`<button class="check" data-on="${on ? 1 : 0}">
-          <span class="box">${on ? "✓" : ""}</span><span>${esc(name)}</span></button>`);
-        b.onclick = () => {
-          if(doneToday) return toast("Already done today");
-          s[key] = !s[key];
-          maybeCompleteCheckin();
-          save();
-          render();
-        };
-        checks.appendChild(b);
-      });
-    },
-  },
-
-  duel: {
-    id:"duel", title:"Trivia Duel", glyph:"💞",
-    blurb:"One answers, the other guesses. Pass the phone over. 15 ♥ a match.",
-    render(root){
-      if(!activeGame || activeGame.type !== "duel") return this.start(root);
-      const g = activeGame;
-      const askName = g.answerer === "A" ? state.couple.partnerA : state.couple.partnerB;
-      const guessName = g.answerer === "A" ? state.couple.partnerB : state.couple.partnerA;
-
-      if(g.phase === "answer" || g.phase === "guess"){
-        const q = g.qs[g.i];
-        const who = g.phase === "answer" ? askName : guessName;
-        const prompt = g.phase === "answer"
-          ? q.q.replace("{A}", askName)
-          : `${askName}'s answer to: ${q.q.replace("{A}", askName)}`;
-        root.appendChild(el(`
-          <div class="card">
-            <div class="spread"><span class="pill love">${esc(who)}</span>
-              <span class="tiny muted">${g.i + 1} of ${g.qs.length}</span></div>
-            <div class="bar"><i style="width:${(g.i / g.qs.length) * 100}%"></i></div>
-            <p class="title" style="margin-top:10px">${esc(prompt)}</p>
-            <div class="opts"></div>
-          </div>`));
-        const opts = root.querySelector(".opts");
-        q.o.forEach((text, idx) => {
-          const b = el(`<button class="opt">${esc(text)}</button>`);
-          b.onclick = () => {
-            (g.phase === "answer" ? g.answers : g.guesses).push(idx);
-            g.i++;
-            if(g.i >= g.qs.length){
-              if(g.phase === "answer"){ g.phase = "handoff"; g.i = 0; }
-              else { g.phase = "done"; GAMES.duel.finish(); }
-            }
-            render();
-          };
-          opts.appendChild(b);
-        });
-        return;
-      }
-
-      if(g.phase === "handoff"){
-        root.appendChild(el(`
-          <div class="card center">
-            <div class="hero"><div class="big">🤝</div>
-              <h2>Pass the phone to ${esc(guessName)}</h2>
-              <p class="small muted">${esc(askName)}, no peeking and no coaching.</p></div>
-            <button class="btn primary wide" id="ready">I am ${esc(guessName)}, ready</button>
-          </div>`));
-        root.querySelector("#ready").onclick = () => { g.phase = "guess"; render(); };
-        return;
-      }
-
-      if(g.phase === "done"){
-        const matches = g.guesses.filter((v, i) => v === g.answers[i]).length;
-        root.appendChild(el(`
-          <div class="card center">
-            <div class="hero"><div class="big">${matches >= 5 ? "🥰" : matches >= 3 ? "😊" : "🙃"}</div>
-            <h2>${matches} of ${g.qs.length}</h2>
-            <p class="small muted">${matches >= 5 ? "You two are unbearable." : matches >= 3 ? "Solid. Room to grow." : "Worth a proper conversation."}</p></div>
-          </div>`));
-        const list = el(`<div class="card"></div>`);
-        g.qs.forEach((q, i) => {
-          const hit = g.guesses[i] === g.answers[i];
-          list.appendChild(el(`<div style="padding:9px 0;border-bottom:1px solid var(--line)">
-            <p class="tiny muted" style="margin:0 0 3px">${esc(q.q.replace("{A}", askName))}</p>
-            <p class="small" style="margin:0">${hit ? "✅" : "❌"} said <b>${esc(q.o[g.answers[i]])}</b>${
-              hit ? "" : `, guessed <span class="muted">${esc(q.o[g.guesses[i]])}</span>`}</p></div>`));
-        });
-        root.appendChild(list);
-        const again = el(`<button class="btn primary wide">Play again</button>`);
-        again.onclick = () => { activeGame = null; render(); };
-        root.appendChild(again);
-        return;
-      }
-      this.start(root);
-    },
-    start(root){
-      const pool = [...QUESTIONS].sort(() => Math.random() - 0.5).slice(0, BALANCE.duelQuestions);
-      activeGame = {
-        type:"duel", phase:"answer", qs:pool, i:0, answers:[], guesses:[],
-        answerer: state.stats.duelsPlayed % 2 === 0 ? "A" : "B",
-      };
-      const who = activeGame.answerer === "A" ? state.couple.partnerA : state.couple.partnerB;
-      root.appendChild(el(`
-        <div class="card center">
-          <div class="hero"><div class="big">💞</div><h2>${esc(who)} goes first</h2>
-          <p class="small muted">Answer ${BALANCE.duelQuestions} questions about yourself, then hand the phone over.</p></div>
-          <button class="btn primary wide" id="begin">Start</button>
-        </div>`));
-      root.querySelector("#begin").onclick = () => render();
-    },
-    finish(){
-      const g = activeGame;
-      const matches = g.guesses.filter((v, i) => v === g.answers[i]).length;
-      let reward = matches * BALANCE.duelPerMatch;
-      if(matches === g.qs.length) reward += BALANCE.duelSweepBonus;
-      state.stats.duelsPlayed++;
-      state.stats.gamesPlayed++;
-      state.stats.bestDuel = Math.max(state.stats.bestDuel, matches);
-      if(reward > 0) earn(reward, "trivia duel"); else save();
-    },
-  },
-
-  memory: {
-    id:"memory", title:"Memory Match", glyph:"🧩",
-    blurb:"Solo filler. Fewer moves, more hearts. Up to 60 ♥.",
-    render(root){
-      if(!activeGame || activeGame.type !== "memory") this.start();
-      const g = activeGame;
-      root.appendChild(el(`
-        <div class="card">
-          <div class="spread"><p class="title" style="margin:0">Moves: ${g.moves}</p>
-            <span class="pill ${g.finished ? "ok" : ""}">${g.finished ? "Done" : "Par " + BALANCE.memoryParMoves}</span></div>
-          <div class="mgrid"></div>
-        </div>`));
-      const grid = root.querySelector(".mgrid");
-      g.cards.forEach((c, i) => {
-        const b = el(`<button class="mcard" data-up="${c.up ? 1 : 0}" data-done="${c.done ? 1 : 0}"><span>${c.icon}</span></button>`);
-        b.onclick = () => this.flip(i);
-        grid.appendChild(b);
-      });
-      if(g.finished){
-        root.appendChild(el(`<div class="card center"><p class="title">${g.reward} ♥ earned in ${g.moves} moves</p></div>`));
-        const again = el(`<button class="btn primary wide">Play again</button>`);
-        again.onclick = () => { activeGame = null; render(); };
-        root.appendChild(again);
-      }
-    },
-    start(){
-      const icons = ["🌹","🍰","🎬","🏖️","🐣","🎈","🍕","🎧","🚲","🌙","☕","🧩"]
-        .sort(() => Math.random() - 0.5).slice(0, BALANCE.memoryPairs);
-      const cards = [...icons, ...icons].map(icon => ({ icon, up:false, done:false }))
-        .sort(() => Math.random() - 0.5);
-      activeGame = { type:"memory", cards, first:null, moves:0, matched:0, lock:false, finished:false, reward:0 };
-    },
-    flip(i){
-      const g = activeGame;
-      const c = g.cards[i];
-      if(g.lock || g.finished || c.up || c.done) return;
-      c.up = true;
-      if(g.first === null){ g.first = i; render(); return; }
-      g.moves++;
-      const a = g.cards[g.first];
-      if(a.icon === c.icon){
-        a.done = c.done = true; a.up = c.up = false;
-        g.first = null;
-        g.matched++;
-        if(g.matched === BALANCE.memoryPairs){
-          g.finished = true;
-          const over = Math.max(0, g.moves - BALANCE.memoryParMoves);
-          g.reward = Math.max(BALANCE.memoryMin, BALANCE.memoryMax - over * BALANCE.memoryStepPenalty);
-          state.stats.gamesPlayed++;
-          earn(g.reward, "memory match");
-        }
-        render();
-        return;
-      }
-      g.lock = true;
-      render();
-      setTimeout(() => {
-        a.up = false; c.up = false; g.first = null; g.lock = false; render();
-      }, 750);
-    },
-  },
-};
-
-/* ---------------- SCREENS ---------------- */
-function renderTop(){
-  const top = $("#top");
-  top.innerHTML = "";
-  if(!state){ top.className = ""; return; }
-  top.className = "top";
-  const c = state.couple;
-  top.appendChild(el(`
-    <div class="top-row">
-      <div class="crest">🏡</div>
-      <div>
-        <h1>${esc(c.name)}</h1>
-        <p class="sub">${esc(c.partnerA)} and ${esc(c.partnerB)} · ${daysTogether(c.togetherSince).toLocaleString()} days</p>
-      </div>
-      <div class="purse">♥ ${state.wallet.hearts.toLocaleString()}</div>
-    </div>`));
-}
-
-function screenSetup(root){
-  root.appendChild(el(`
-    <div class="hero"><div class="big">🏡</div>
-      <h2>Couple Houses</h2>
-      <p class="small muted">Play together, earn hearts, build the house, then show it off.</p></div>
-    <div class="card">
-      <label class="field"><span>House name</span><input id="f-name" placeholder="The Tan House" maxlength="30"></label>
-      <label class="field"><span>Partner one</span><input id="f-a" placeholder="Alex" maxlength="18"></label>
-      <label class="field"><span>Partner two</span><input id="f-b" placeholder="Sam" maxlength="18"></label>
-      <label class="field"><span>Together since</span><input id="f-since" type="date"></label>
-      <button class="btn primary wide" id="f-go">Move in</button>
-    </div>`));
-  root.querySelector("#f-go").onclick = async () => {
-    const name = root.querySelector("#f-name").value.trim();
-    const a = root.querySelector("#f-a").value.trim();
-    const b = root.querySelector("#f-b").value.trim();
-    const since = root.querySelector("#f-since").value;
-    if(!a || !b) return toast("Both names, please");
-    state = freshState({ name: name || `${a} and ${b}`, partnerA:a, partnerB:b, togetherSince: since || today() });
-    await save();
-    go("home");
-  };
-}
-
-function screenHome(root){
-  const charm = charmOf(state.house.placed);
-  const streak = currentStreak();
-  rollCheckinDay();
-  const checkedIn = state.streak.lastCheckIn === today();
-  root.appendChild(el(`<div class="stats">
-    <div class="stat"><b>${state.wallet.hearts.toLocaleString()}</b><span>hearts</span></div>
-    <div class="stat"><b>${streak}</b><span>day streak</span></div>
-    <div class="stat"><b>${charm}</b><span>charm</span></div>
-  </div>`));
-
-  if(!checkedIn){
-    const card = el(`<div class="card" style="margin-top:12px">
-      <div class="spread"><div><p class="title">Today is not claimed</p>
-        <p class="small muted">Both of you tap in for ${BALANCE.checkInBase + Math.min(BALANCE.streakBonus * (streak + 1), BALANCE.streakBonusCap)} ♥</p></div>
-        <button class="btn primary sm">Check in</button></div></div>`);
-    card.querySelector("button").onclick = () => go("play", { game:"checkin" });
-    root.appendChild(card);
-  }
-
-  root.appendChild(el(`<h2 class="sec">Your house</h2>`));
-  const houseCard = el(`<div class="card"></div>`);
-  const unlocked = ROOMS.filter(r => state.house.rooms[r.id].unlocked);
-  const showRoom = unlocked.some(r => r.id === activeRoom) ? activeRoom : unlocked[0].id;
-  renderHouse(houseCard, state.house, showRoom, {});
-  houseCard.appendChild(el(`<p class="small muted center" style="margin:10px 0 0">
-    ${state.house.placed.length} pieces placed · ${unlocked.length} of ${ROOMS.length} rooms open</p>`));
-  const bBuild = el(`<button class="btn wide" style="margin-top:10px">Open the builder</button>`);
-  bBuild.onclick = () => go("build");
-  houseCard.appendChild(bBuild);
-  root.appendChild(houseCard);
-
-  root.appendChild(el(`<h2 class="sec">Earn today</h2>`));
-  Object.values(GAMES).forEach(g => {
-    const b = el(`<button class="gamecard"><div class="g">${g.glyph}</div>
-      <div><p class="title">${g.title}</p><p class="small muted">${esc(g.blurb)}</p></div></button>`);
-    b.onclick = () => go("play", { game:g.id });
-    root.appendChild(b);
-  });
-}
-
-function screenPlay(root){
-  if(route.view && route.view.game){
-    const g = GAMES[route.view.game];
-    const back = el(`<button class="btn ghost sm" style="margin-bottom:12px">← All games</button>`);
-    back.onclick = () => { activeGame = null; go("play"); };
-    root.appendChild(back);
-    root.appendChild(el(`<h2 class="sec" style="margin-top:0">${g.glyph} ${g.title}</h2>`));
-    g.render(root);
-    return;
-  }
-  root.appendChild(el(`<h2 class="sec">Ways to earn</h2>`));
-  Object.values(GAMES).forEach(g => {
-    const b = el(`<button class="gamecard"><div class="g">${g.glyph}</div>
-      <div><p class="title">${g.title}</p><p class="small muted">${esc(g.blurb)}</p></div></button>`);
-    b.onclick = () => { activeGame = null; go("play", { game:g.id }); };
-    root.appendChild(b);
-  });
-  root.appendChild(el(`<div class="card tight small muted center">
-    Played ${state.stats.gamesPlayed} times · ${state.wallet.lifetimeEarned.toLocaleString()} ♥ earned all up</div>`));
-}
-
-function screenBuild(root){
-  // room tabs
-  const tabs = el(`<div class="roomtabs"></div>`);
-  ROOMS.forEach(r => {
-    const open = state.house.rooms[r.id].unlocked;
-    const b = el(`<button class="${open ? "" : "locked"}" aria-current="${activeRoom === r.id && open}">
-      ${open ? esc(r.name) : "🔒 " + esc(r.name) + " · " + r.price + "♥"}</button>`);
-    b.onclick = () => {
-      if(open){ activeRoom = r.id; shopFilter = r.id; render(); return; }
-      if(state.wallet.hearts < r.price) return toast(`Need ${r.price - state.wallet.hearts} more ♥`);
-      if(!confirm(`Unlock the ${r.name} for ${r.price} ♥?`)) return;
-      spend(r.price);
-      state.house.rooms[r.id].unlocked = true;
-      activeRoom = r.id; shopFilter = r.id;
-      save(); toast(`${r.name} unlocked`); render();
-    };
-    tabs.appendChild(b);
-  });
-  root.appendChild(tabs);
-
-  if(!state.house.rooms[activeRoom].unlocked) activeRoom = "living";
-
-  const houseCard = el(`<div class="card"></div>`);
-  renderHouse(houseCard, state.house, activeRoom, {
-    placing: !!held,
-    onTile(x, y){
-      if(!held) return toast("Pick something from below first");
-      const item = ITEM_BY_ID[held.itemId];
-      const f = footprint(item, held.rot);
-      if(!canPlace(state.house.placed, activeRoom, x, y, f.w, f.h)) return toast("Does not fit there");
-      state.house.placed.push({ instanceId:held.instanceId, itemId:held.itemId, room:activeRoom, x, y, rot:held.rot });
-      held = null;
-      save(); render();
-    },
-    onItem(p){
-      if(held) return toast("Put down what you are holding first");
-      state.house.placed = state.house.placed.filter(q => q.instanceId !== p.instanceId);
-      held = { instanceId:p.instanceId, itemId:p.itemId, rot:p.rot, fromPlaced:true };
-      save(); render();
-    },
-  });
-  houseCard.appendChild(el(`<p class="tiny muted center" style="margin:9px 0 0">
-    Tap a piece to pick it up · tap a tile to put it down</p>`));
-  root.appendChild(houseCard);
-
-  if(held){
-    const item = ITEM_BY_ID[held.itemId];
-    const bar = el(`<div class="held">
-      <span style="font-size:22px">${item.glyph}</span>
-      <b style="flex:1">${esc(item.name)}</b>
-      ${item.w !== item.h ? '<button class="btn sm" id="rot">Rotate</button>' : ""}
-      <button class="btn sm" id="stow">Store</button></div>`);
-    const rot = bar.querySelector("#rot");
-    if(rot) rot.onclick = () => { held.rot = (held.rot + 1) % 2; render(); };
-    bar.querySelector("#stow").onclick = () => {
-      state.house.inventory.push({ instanceId:held.instanceId, itemId:held.itemId });
-      held = null; save(); render();
-    };
-    root.appendChild(bar);
-  }
-
-  // storage
-  root.appendChild(el(`<h2 class="sec">In storage (${state.house.inventory.length})</h2>`));
-  if(state.house.inventory.length === 0){
-    root.appendChild(el(`<div class="empty">Nothing in storage. Buy something below.</div>`));
-  }else{
-    const shelf = el(`<div class="shelf"></div>`);
-    state.house.inventory.forEach(inv => {
-      const item = ITEM_BY_ID[inv.itemId];
-      const slot = el(`<div class="slot"><div class="g">${item.glyph}</div>
-        <div class="n">${esc(item.name)}</div><div class="p">${item.charm} charm</div>
-        <button class="btn sm">Place</button></div>`);
-      slot.querySelector("button").onclick = () => {
-        if(held) return toast("Put down what you are holding first");
-        state.house.inventory = state.house.inventory.filter(q => q.instanceId !== inv.instanceId);
-        held = { instanceId:inv.instanceId, itemId:inv.itemId, rot:0, fromPlaced:false };
-        save(); render();
-      };
-      shelf.appendChild(slot);
-    });
-    root.appendChild(shelf);
-  }
-
-  // shop
-  root.appendChild(el(`<h2 class="sec">Shop</h2>`));
-  const cats = el(`<div class="cat"></div>`);
-  [...ROOMS.map(r => ({ id:r.id, name:r.name })), { id:"any", name:"Mementos" }].forEach(c => {
-    const b = el(`<button aria-current="${shopFilter === c.id}">${esc(c.name)}</button>`);
-    b.onclick = () => { shopFilter = c.id; render(); };
-    cats.appendChild(b);
-  });
-  root.appendChild(cats);
-
-  const shelf = el(`<div class="shelf"></div>`);
-  CATALOGUE.filter(i => i.room === shopFilter).forEach(item => {
-    const afford = state.wallet.hearts >= item.price;
-    const slot = el(`<div class="slot"><div class="g">${item.glyph}</div>
-      <div class="n">${esc(item.name)}</div><div class="p">${item.charm} charm</div>
-      <button class="btn sm ${afford ? "primary" : ""}" ${afford ? "" : "disabled"}>${item.price} ♥</button></div>`);
-    slot.querySelector("button").onclick = () => {
-      if(!spend(item.price)) return toast("Not enough hearts");
-      state.house.inventory.push({ instanceId:uid(), itemId:item.id });
-      save(); toast(`${item.name} delivered`); render();
-    };
-    shelf.appendChild(slot);
-  });
-  root.appendChild(shelf);
-}
-
-function thumbFor(placed){
-  return [...placed]
-    .sort((a,b) => (ITEM_BY_ID[b.itemId].charm || 0) - (ITEM_BY_ID[a.itemId].charm || 0))
-    .slice(0, 7).map(p => ITEM_BY_ID[p.itemId].glyph).join(" ") || "🏚️";
-}
-
-async function screenShowcase(root){
-  if(route.view && route.view.house){
-    const h = route.view.house;
-    const back = el(`<button class="btn ghost sm" style="margin-bottom:12px">← Back to the street</button>`);
-    back.onclick = () => go("show");
-    root.appendChild(back);
-    const liked = state.showcase.likesGiven.includes(h.id);
-    root.appendChild(el(`<div class="card">
-      <p class="title">${esc(h.name)}</p>
-      <p class="small muted">${esc(h.partners)} · ${daysTogether(h.since).toLocaleString()} days together</p>
-      <p class="small" style="margin:8px 0 0">"${esc(h.tagline)}"</p></div>`));
-    const houseCard = el(`<div class="card"></div>`);
-    renderHouse(houseCard, h, "living", {});
-    houseCard.appendChild(el(`<div class="spread" style="margin-top:11px">
-      <span class="pill gold">✨ ${h.charm} charm</span>
-      <span class="pill love">♥ ${(h.likes + (liked ? 1 : 0)).toLocaleString()}</span></div>`));
-    root.appendChild(houseCard);
-    if(!h.mine){
-      const b = el(`<button class="btn ${liked ? "" : "primary"} wide">${liked ? "♥ Loved" : "Leave a heart"}</button>`);
-      b.onclick = async () => { await Store.likeHouse(state, h.id); render(); };
-      root.appendChild(b);
-    }
-    return;
-  }
-
-  root.appendChild(el(`<div class="notice">This street is a local preview. Real couples appear here once the app goes online.</div>`));
-
-  if(!state.showcase.published){
-    const card = el(`<div class="card">
-      <p class="title">Your house is private</p>
-      <p class="small muted">Publish it and it joins the street, ranked by charm.</p>
-      <label class="field" style="margin-top:11px"><span>One line about you two</span>
-        <input id="tag" maxlength="60" placeholder="Two years in, still buying chairs."></label>
-      <button class="btn primary wide" id="pub">Publish our house</button></div>`);
-    card.querySelector("#pub").onclick = async () => {
-      state.showcase.tagline = card.querySelector("#tag").value.trim();
-      state.showcase.published = true;
-      await save(); toast("You are on the street"); render();
-    };
-    root.appendChild(card);
-  }
-
-  const houses = await Store.listShowcase(state);
-  root.appendChild(el(`<h2 class="sec">Ranked by charm</h2>`));
-  houses.forEach((h, i) => {
-    const liked = state.showcase.likesGiven.includes(h.id);
-    const card = el(`<button class="hcard">
-      <div class="thumb">${thumbFor(h.placed)}</div>
-      <div class="rank">#${i + 1}${h.mine ? " · yours" : ""}</div>
-      <div class="meta">
-        <div class="spread"><p class="title" style="margin:0">${esc(h.name)}</p>
-          <span class="pill gold">✨ ${h.charm}</span></div>
-        <p class="small muted" style="margin:3px 0 0">${esc(h.partners)} · ${daysTogether(h.since).toLocaleString()} days</p>
-        <p class="small" style="margin:6px 0 0">"${esc(h.tagline)}" <span class="muted">· ♥ ${(h.likes + (liked ? 1 : 0)).toLocaleString()}</span></p>
-      </div></button>`);
-    card.onclick = () => go("show", { house:h });
-    root.appendChild(card);
-  });
-}
-
-/* ---------------- BOOT ---------------- */
-async function render(){
-  renderTop();
-  const root = $("#screen");
-  root.innerHTML = "";
-  const nav = $("#nav");
-  if(!state){ nav.hidden = true; screenSetup(root); return; }
-  nav.hidden = false;
-  nav.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", String(b.dataset.tab === route.tab)));
-  if(route.tab === "home") screenHome(root);
-  else if(route.tab === "play") screenPlay(root);
-  else if(route.tab === "build") screenBuild(root);
-  else await screenShowcase(root);
-}
-
-$("#nav").addEventListener("click", e => {
-  const b = e.target.closest("button[data-tab]");
-  if(!b) return;
-  if(b.dataset.tab === "play") activeGame = null;
-  go(b.dataset.tab);
-});
-
-(async function boot(){
-  state = await Store.load();
-  render();
-})();
-</script>
+<script src="vendor/three.min.js"></script>
+<script src="src/palette.js"></script>
+<script src="src/props.js"></script>
+<script src="src/diorama.js"></script>
+<script src="src/bible.js"></script>
+<script src="src/games.js"></script>
+<script src="src/app.js"></script>
 </body>
 </html>
