@@ -15,9 +15,9 @@ A working prototype of the art bible, not a mock. Every rule in that document
 that can be enforced in code is enforced in code, and the parts that cannot be
 enforced are visible on screen so they can be judged.
 
-- **Held, not entered.** Orthographic camera, tilted 32 degrees, yaw snapping in
-  90 degree steps, three fixed zoom stops, no roll and no free camera. You are
-  always looking at a small object from outside.
+- **Held, not entered.** Orthographic camera, tilted 32 degrees, no roll. Drag
+  the dome to turn it, flick it to spin, pinch or scroll to zoom. You are always
+  looking at a small object from outside, and now you can pick it up.
 - **Four layers.** Ceramic plinth carrying the couple's names, a mounded terrain
   disc, the home the player built with walls at half height, and a glass dome
   with a fresnel rim holding the weather.
@@ -66,10 +66,11 @@ the app. Tap **QA** on the dome. For every prop in the catalogue it checks:
 - every colour resolves to a master palette entry
 - at most one accent colour
 - triangle count inside the budget for its asset class
-- reads as a silhouette at 64 pixels, and reads at all four camera yaws
+- reads as a silhouette at 64 pixels, and reads at all eight sampled yaws
 - silhouette distinct from every other prop, compared by shape rather than size
 
-All 32 props pass. Two are flagged as thin for their class rather than failing:
+All 32 props pass at eight yaws. Two are flagged as thin for their class rather
+than failing:
 the warm lamp at 144 triangles and the wardrobe at 1594. That is a finding about
 the bible's floors, not about the props. The triangle ranges in section 6 assume
 two bevel segments everywhere; parts under 85mm here use a single segment, which
@@ -80,6 +81,18 @@ triangles to 43,000. A full four room lot renders at about 53,000 against the
 ## Where the prototype knowingly diverges
 
 Honest list, so nobody mistakes a shortcut for a decision.
+
+- **Yaw is free, against section 4.** The bible says yaw "snaps in 90 degree
+  increments only" and that there is "no free camera", so that every screenshot
+  a player takes is composed. That was overridden deliberately: the dome now
+  follows your finger, a flick carries momentum, and it rests wherever you let
+  go. Tilt stays locked at 32 degrees and roll is still impossible, so the two
+  rules doing the most work survive. The arrows remain and are more useful than
+  before, taking you to the next quarter turn from any resting angle, which is
+  still the fastest way to a framed shot. The consequence was handled rather
+  than ignored: the asset review now samples eight yaws instead of four,
+  because props are seen from in between. All 32 still pass. As it turns out
+  the three quarter angles read better than the four stops did.
 
 - **Post processing is faked.** Bloom, vignette and the warm grade are CSS
   overlay layers, because a real `EffectComposer` is not in the UMD build. In

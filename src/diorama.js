@@ -39,10 +39,16 @@ function softDisc(colour){
 
 const Diorama = {
   ready:false, mode:"home", held:null, heldRot:0,
-  yaw:0, yawTarget:0, yawFrom:0, yawT:1, zoomStop:1,
+  yaw:0, yawTarget:0, yawFrom:0, yawT:1,
+  zoomStop:1, zoomK:1.16, zoomFrom:1.16, zoomTo:1.16, zoomT:1,
+  spin:0, dragging:false, calm:false,
   frames:0, fps:60, _lastFpsAt:0,
 
+  /* Section 4 named three stops. Yaw and zoom are both continuous now, so
+     these are the multipliers of the lot radius the stops sit at, and the
+     outer two double as the clamps a pinch cannot pass. */
   ZOOM_K:[1.62, 1.16, 0.58],
+  ZOOM_NAMES:["wide", "home", "close"],
   get ZOOMS(){ return this.ZOOM_K.map(k => k * LOT.radius); },           // Dome, Home, Detail (section 4)
 
   init(container){
@@ -415,46 +421,139 @@ const Diorama = {
     this.camera.lookAt(this.target);
     this.camera.up.set(0, 1, 0);
   },
+  /* The arrows still exist alongside the drag, and they are worth more now
+     than before: from any resting angle they take you to the next composed
+     quarter turn, which is the fastest way back to a framed shot. */
   rotate(dir){
+    this.spin = 0;
+    const q = Math.PI / 2, u = this.yaw / q, eps = 0.02;
+    let t = dir > 0 ? Math.ceil(u - eps) : Math.floor(u + eps);
+    if(Math.abs(t - u) < eps) t += dir;
     this.yawFrom = this.yaw;
-    this.yawTarget = this.yawTarget + dir * Math.PI / 2;
+    this.yawTarget = t * q;
     this.yawT = 0;
+  },
+  setZoomK(k){
+    this.zoomT = 1;
+    this.zoomK = Math.max(this.ZOOM_K[2], Math.min(this.ZOOM_K[0], k));
+    this.applyView();
   },
   setZoom(stop){
     this.zoomStop = Math.max(0, Math.min(2, stop));
-    this.resize();
+    this.zoomFrom = this.zoomK;
+    this.zoomTo = this.ZOOM_K[this.zoomStop];
+    this.zoomT = 0;
   },
-  resize(){
+  /* a pinch leaves you between stops, so the button picks up from the
+     nearest one rather than from whatever was last pressed */
+  cycleZoom(){
+    let near = 0, best = 1e9;
+    this.ZOOM_K.forEach((k, i) => { const d = Math.abs(k - this.zoomK); if(d < best){ best = d; near = i; } });
+    this.setZoom((near + 1) % 3);
+    return this.ZOOM_NAMES[this.zoomStop];
+  },
+  applyView(){
     if(!this.container) return;
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if(!w || !h) return;
-    this.renderer.setSize(w, h, false);
-    const view = this.ZOOMS[this.zoomStop];
+    const view = this.zoomK * LOT.radius;
     const aspect = w / h;
     this.camera.left = -view * aspect; this.camera.right = view * aspect;
     this.camera.top = view; this.camera.bottom = -view;
     this.camera.updateProjectionMatrix();
     this.applyCamera();
   },
+  resize(){
+    if(!this.container) return;
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    if(!w || !h) return;
+    this.renderer.setSize(w, h, false);
+    this.applyView();
+  },
 
-  /* ---- input. Tap, not drag. ---- */
+  /* ---- input. Drag the dome to turn it, pinch or scroll to zoom, tap to
+     place and pick up. A drag never becomes a tap. ---- */
   bindInput(){
     const el = this.renderer.domElement;
-    let down = null;
-    el.style.touchAction = "manipulation";
-    el.addEventListener("pointerdown", e => { down = { x:e.clientX, y:e.clientY }; });
+    el.style.touchAction = "none";      // the dome eats the gesture, the page does not scroll
+    this.calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const pts = new Map();
+    let start = null, pinch = null;
+
+    el.addEventListener("pointerdown", e => {
+      try{ el.setPointerCapture(e.pointerId); }catch(err){ /* capture is a nicety */ }
+      pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+      if(pts.size === 1){
+        this.spin = 0;
+        this.yawT = 1;                  // a hand on the dome stops any tween
+        this.dragging = false;
+        start = { x:e.clientX, y:e.clientY, yaw:this.yaw, t:performance.now(), moved:0 };
+      }else if(pts.size === 2){
+        const [a, b] = [...pts.values()];
+        pinch = { d:Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), k:this.zoomK };
+        this.dragging = false;
+        start = null;
+        this.showGhost(null);
+      }
+    });
+
     el.addEventListener("pointermove", e => {
-      if(!this.held) return;
-      const spot = this.hoverAt(...this.worldAt(e));
-      this.showGhost(spot, spot && this.canPlace(spot));
+      if(pts.has(e.pointerId)) pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+      if(pinch && pts.size >= 2){
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if(d > 4) this.setZoomK(pinch.k * (pinch.d / d));
+        return;
+      }
+
+      if(start){
+        const dx = e.clientX - start.x;
+        start.moved = Math.max(start.moved, Math.hypot(dx, e.clientY - start.y));
+        if(!this.dragging && Math.abs(dx) > 6) this.dragging = true;
+        if(this.dragging){
+          const k = (Math.PI * 2.3) / Math.max(1, el.clientWidth);   // a full swipe is a bit over half a turn
+          const now = performance.now(), prev = this.yaw;
+          this.yaw = start.yaw - dx * k;
+          const dt = Math.max(8, now - start.t);
+          const v = ((this.yaw - prev) / dt) * 1000;
+          this.spin = this.spin * 0.6 + v * 0.4;                     // smoothed, so a jitter cannot fling it
+          start.t = now;
+          this.yawTarget = this.yaw;
+          this.applyCamera();
+          this.showGhost(null);
+          return;
+        }
+      }
+      if(this.held && !this.dragging){
+        const spot = this.hoverAt(...this.worldAt(e));
+        this.showGhost(spot, spot && this.canPlace(spot));
+      }
     });
-    el.addEventListener("pointerup", e => {
-      if(!down) return;
-      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
-      down = null;
-      if(moved > 12) return;
-      this.tap(e);
-    });
+
+    const release = e => {
+      if(!pts.has(e.pointerId) && pts.size) return;
+      pts.delete(e.pointerId);
+      if(pts.size < 2) pinch = null;
+      if(pts.size > 0) return;                    // still a finger on the dome
+      const dragged = this.dragging, moved = start ? start.moved : 999;
+      start = null;
+      this.dragging = false;
+      if(dragged){
+        this.spin = this.calm ? 0 : Math.max(-5, Math.min(5, this.spin));
+        return;                                    // a drag is never a tap
+      }
+      this.spin = 0;
+      if(moved <= 12) this.tap(e);
+    };
+    el.addEventListener("pointerup", release);
+    el.addEventListener("pointercancel", release);
+
+    el.addEventListener("wheel", e => {
+      e.preventDefault();
+      this.setZoomK(this.zoomK * (1 + e.deltaY * 0.0012));
+    }, { passive:false });
   },
   worldAt(e){
     const r = this.renderer.domElement.getBoundingClientRect();
@@ -499,6 +598,18 @@ const Diorama = {
       this.yawT = Math.min(1, this.yawT + dt / 0.45);
       this.yaw = lerp(this.yawFrom, this.yawTarget, springOut(this.yawT, 0.6));
       this.applyCamera();
+    }else if(!this.dragging && this.spin !== 0){
+      // a flick keeps going and dies away, the one place a decay curve beats an ease
+      this.yaw += this.spin * dt;
+      this.spin *= Math.pow(0.05, dt);
+      if(Math.abs(this.spin) < 0.06) this.spin = 0;
+      this.yawTarget = this.yaw;
+      this.applyCamera();
+    }
+    if(this.zoomT < 1){
+      this.zoomT = Math.min(1, this.zoomT + dt / 0.4);
+      this.zoomK = lerp(this.zoomFrom, this.zoomTo, easeOutSine(this.zoomT));
+      this.applyView();
     }
     const camXZ = new THREE.Vector2(Math.sin(this.yaw), Math.cos(this.yaw));
     (this.walls || []).forEach(w => {

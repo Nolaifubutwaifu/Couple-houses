@@ -21,7 +21,9 @@ function runBibleChecks(){
     // shape, not size: crop the silhouette to its own bounds before comparing,
     // which is what "identifiable as a black shape" actually means
     const bits = shapeHash(Offscreen.mask(def.id, 64, 0), 12);
-    const yaws = [0, Math.PI / 2, Math.PI, Math.PI * 1.5].map(y => Offscreen.mask(def.id, 48, y).filled);
+    // yaw is free now, so four sample angles no longer cover what a player sees
+    const yaws = [];
+    for(let i = 0; i < 8; i++) yaws.push(Offscreen.mask(def.id, 48, i * Math.PI / 4).filled);
 
     let nearest = null, nearestD = 999;
     for(const other in hashes){
@@ -83,7 +85,7 @@ function downsample(mask, to){
 
 const CHECK_LABELS = {
   palette:"master palette only", oneAccent:"at most one accent", budget:"inside triangle budget",
-  silhouette:"reads at 64px", unique:"distinct silhouette", allYaws:"reads at all four yaws",
+  silhouette:"reads at 64px", unique:"distinct silhouette", allYaws:"reads at all eight yaws",
 };
 
 function hamming(a, b){

@@ -389,7 +389,7 @@ async function render(){
   };
   $("#rot-l").onclick = () => Diorama.rotate(-1);
   $("#rot-r").onclick = () => Diorama.rotate(1);
-  $("#zoom").onclick = () => { Diorama.setZoom((Diorama.zoomStop + 1) % 3); $("#zoom").textContent = ["wide","home","close"][Diorama.zoomStop]; };
+  $("#zoom").onclick = () => { $("#zoom").textContent = Diorama.cycleZoom(); };
   $("#tabs").addEventListener("click", e => {
     const b = e.target.closest("button[data-tab]");
     if(!b) return;
