@@ -29,16 +29,24 @@ async function tab(ctx, who, config){
   ok("the backend stays off with no url", await A.eval(() => Api.backend === null && Backend.reason === "not configured"),
      await A.eval(() => Backend.reason));
 
-  /* The live site's actual state until anonymous sign in is switched on: the
-     database is reachable and has no way into it, which must fall back rather
-     than strand somebody at a sign in screen that cannot work. */
+  /* The live site's actual state: the database is reachable with anonymous
+     sign in on, so the app should take it and offer exactly that. */
   const probe = await tab(ctx, "probe", { url:"http://127.0.0.1:8811", lib:"/_lib/supabase.js", probeMs:15000 });
-  const state = await probe.eval(() => ({ backend:Api.backend, reason:Backend.reason, ways:Onboard.ways() }));
-  ok("a reachable database with no way in falls back", state.backend === null &&
-     /no sign in method/.test(state.reason), JSON.stringify(state));
-  ok("and the screen offers the local providers instead",
-     JSON.stringify(state.ways) === JSON.stringify(["apple", "google", "email"]), JSON.stringify(state.ways));
-  await probe.page.close();
+  const state = await probe.eval(() => ({ backend:!!Api.backend, reason:Backend.reason, ways:Onboard.ways() }));
+  ok("a reachable database with a way in is taken", state.backend === true, JSON.stringify(state));
+  ok("and the screen offers exactly what the project has on",
+     JSON.stringify(state.ways) === JSON.stringify(["guest"]), JSON.stringify(state.ways));
+
+  /* and with no way in at all it must fall back rather than strand somebody
+     at a sign in screen that cannot work */
+  const shut = await tab(ctx, "shut", { url:"http://127.0.0.1:8811", lib:"/_lib/supabase.js",
+                                        probeMs:15000, providers:[] });
+  const shutState = await shut.eval(() => ({ backend:Api.backend, reason:Backend.reason, ways:Onboard.ways() }));
+  ok("a database with no way in falls back instead", shutState.backend === null &&
+     /no sign in method/.test(shutState.reason), JSON.stringify(shutState));
+  ok("and offers the local providers instead",
+     JSON.stringify(shutState.ways) === JSON.stringify(["apple", "google", "email"]), JSON.stringify(shutState.ways));
+  await probe.page.close(); await shut.page.close();
 
   let r = await A.call("POST", "/auth/session", { provider:"apple", subject:"ada" });
   ok("A signs in locally", r.ok && r.r.is_new === true, JSON.stringify(r).slice(0, 100));

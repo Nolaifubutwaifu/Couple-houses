@@ -480,6 +480,7 @@ const Onboard = {
       this.go("invite", { nest, invite:r.invite });
     };
     this.watchForClaim(nest.id);
+    this.pollPair(nest.id);
   },
 
   /* ---------- S5b enter code ---------- */
@@ -580,27 +581,54 @@ const Onboard = {
       this.go("invite", { nest:me.nest, invite:r.invite });
     };
   },
+  /* The founder is on the invite screen with the code in front of them, or on
+     the waiting screen having sent it, and either way the thing they are
+     waiting for happens on somebody else's phone. A message that has to
+     arrive is not a plan, so this asks. Against a database each ask is
+     several queries, so it asks less often than it did over local storage,
+     which is still well inside how long a person takes to read a code out. */
+  WAITING_STEPS: ["invite", "waiting", "awaitConfirm"],
   pollPair(nestId){
     clearInterval(this._poll);
+    this._asking = false;
     this._poll = setInterval(async () => {
-      if(this.step !== "awaitConfirm" && this.step !== "waiting"){ clearInterval(this._poll); return; }
-      const me = await Api.call("GET", "/nests/mine");
+      if(this.WAITING_STEPS.indexOf(this.step) < 0){ clearInterval(this._poll); return; }
+      // a tick that is still in flight is not helped by starting another one,
+      // and on a slow connection the overlap is what makes it slow
+      if(this._asking) return;
+      this._asking = true;
+      let me;
+      try{ me = await Api.call("GET", "/nests/mine"); }
+      catch(err){ this._asking = false; return; }
+      this._asking = false;
       if(me.nest && me.nest.status === "active" && me.membership.status === "active"){
         clearInterval(this._poll);
         this.afterPair();
-      }else if(this.step === "waiting" && me.pending_partner){
+      }else if(this.step !== "awaitConfirm" && me.pending_partner){
         clearInterval(this._poll);
         this.confirmPrompt(me);
       }
-    }, 900);
+    }, Api.backend ? 2500 : 900);
   },
 
+  /* Called from a poll tick and from a realtime message, so it can arrive
+     twice, and it is the last thing standing between a person and the nest
+     they just joined. It used to kill the poll on its first line and then
+     read me.nest.id, which throws if that call comes back without a nest:
+     one unlucky moment and the screen sat there forever with nothing left
+     running to try again. The poll now dies only once this has worked. */
   async afterPair(){
-    clearInterval(this._poll);
-    Track.fire("nest_activated");                 // north star
+    if(this._pairing) return;
+    this._pairing = true;
     let me = null;
     try{ me = await Api.call("GET", "/nests/mine"); }
-    catch(err){ return this.go("ceremonyQueued", {}); }
+    catch(err){ this._pairing = false; return; }          // the poll tries again
+    if(!me.nest || me.nest.status !== "active"){
+      this._pairing = false;                              // not yet, keep waiting
+      return;
+    }
+    clearInterval(this._poll);
+    Track.fire("nest_activated");                 // north star
     App.ensureGame(me.nest.id);
     // The flag goes up at pairing and only comes down when the ceremony has
     // played all the way through. A client that dies halfway, or was offline

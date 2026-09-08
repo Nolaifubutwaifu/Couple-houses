@@ -209,7 +209,8 @@ const Backend = {
     this.chan = null; this.nestId = null;
   },
   async pull(){
-    if(!this.nestId || document.hidden) return;
+    // a fetch that overlaps a write comes back describing the past
+    if(!this.nestId || document.hidden || this.saving) return;
     const r = await this.sb.from("nests")
       .select("id,name,status,updated_at,frozen").eq("id", this.nestId).maybeSingle();
     if(r.error || !r.data) return;
@@ -220,7 +221,12 @@ const Backend = {
       .eq("id", this.nestId).maybeSingle();
     if(full.error || !full.data) return;
     const g = full.data.game;
-    if(g && g.nest_id && (g.rev || 0) !== this.rev){
+    /* Strictly newer, never merely different. A poll that left before a local
+       save and arrives after it holds an older document, and "different" reads
+       that as news: the older one is written over the newer, the next save
+       carries it back to the database, and a person watches the thing they
+       just placed disappear. */
+    if(g && g.nest_id && (g.rev || 0) > this.rev){
       this.cache(this.nestId, g);
       Realtime.deliver({ type:"game.changed", payload:{ nest_id:this.nestId }, from:"poll" });
     }
@@ -343,6 +349,10 @@ const BROUTES = {
     const out = this.ok(r, "claim_failed");
     const mine = this.ok(await this.sb.from("memberships").select("*")
       .eq("nest_id", out.nest_id).eq("user_id", me).maybeSingle());
+    // joining the nest's channel before announcing it, because until this
+    // moment there was no nest to be subscribed to and the announcement had
+    // nowhere to go
+    this.watch(out.nest_id, null);
     this.emit("invite.claimed", { nest_id:out.nest_id, code:String(code).toUpperCase(),
                                   user:{ id:me, display_name:p.display_name } });
     return { nest:{ id:out.nest_id, name:out.name, founder_name:out.founder_name, status:"pending" },
@@ -388,25 +398,24 @@ const BROUTES = {
     return { nest };
   },
 
+  /* One round trip, because the invite and waiting screens call this on a
+     timer while a person watches. The snapshot leaves the game document out,
+     so that is fetched once when it is not already in hand and kept current
+     by the watcher rather than by this. */
   async "GET /nests/mine"(){
     if(!this.uid) return { user:null };
-    const user = await this.profile();
-    if(!user || user.deleted) return { user:null };
-    const live = this.ok(await this.sb.from("memberships").select("*")
-      .eq("user_id", this.uid).neq("status", "left"));
-    if(!live.length){ this.unwatch(); return { user, nest:null }; }
-    const m = live[0];
-    const nest = this.ok(await this.sb.from("nests").select("*").eq("id", m.nest_id).maybeSingle());
-    if(!nest || nest.status === "archived"){ this.unwatch(); return { user, nest:null }; }
-    const members = (await this.members(nest.id)).filter(x => x.status !== "left");
-    const invites = this.ok(await this.sb.from("invites").select("*")
-      .eq("nest_id", nest.id).eq("status", "open"));
-    const invite = invites.find(i => new Date(i.expires_at).getTime() > Date.now()) || null;
-    const pending = members.find(x => x.status === "invited");
-    if(nest.game && nest.game.nest_id) this.cache(nest.id, nest.game);
-    this.watch(nest.id, nest);
-    return { user, nest, membership:m, members, invite,
-             pending_partner: pending ? pending.user : null };
+    const snap = this.ok(await this.sb.rpc("nest_snapshot"), "no_profile");
+    if(!snap || !snap.user) return { user:null };
+    if(!snap.nest){ this.unwatch(); return { user:snap.user, nest:null }; }
+    if(!Api.db.game[snap.nest.id]){
+      const g = this.ok(await this.sb.from("nests").select("game")
+        .eq("id", snap.nest.id).maybeSingle());
+      if(g && g.game && g.game.nest_id) this.cache(snap.nest.id, g.game);
+    }
+    this.watch(snap.nest.id, snap.nest);
+    return { user:snap.user, nest:snap.nest, membership:snap.membership,
+             members:snap.members || [], invite:snap.invite || null,
+             pending_partner:snap.pending_partner || null };
   },
 
   async "POST /nests/{id}/leave"({ id }){

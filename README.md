@@ -275,6 +275,29 @@ offered:
    the only reason the project's advisor list mentions leaked password
    protection at all.
 
+**Four bugs the screens hid from the endpoints.** Every suite above drove
+`Api.call` directly, which asks whether the database would answer if asked. It
+always would. What none of them asked was whether the screens bother to ask,
+and they did not: a founder holding a code sat there while their partner
+waited, because that screen only listened for a realtime message that, on the
+claiming side, had no channel to go out on. `tools/screen-pair-test.js` drives
+real taps on real buttons and polls nothing itself, which is the only shape of
+test that could have caught it. It then found three more:
+
+- the partner never learned they had been let in, because `afterPair` killed
+  its own poll on its first line and could throw before it navigated, leaving
+  the screen with nothing left running to try again
+- being let in took thirty seconds, because `/nests/mine` was six sequential
+  round trips and the screen fired it every two and a half seconds without
+  waiting for the last one. It is now one round trip, `nest_snapshot`, and a
+  tick that is still in flight does not start another. Seven seconds through a
+  deliberately slow test rig, and a poll interval on a real connection
+- the poll accepted any revision that merely differed from the one it held,
+  so a fetch that left before a local save and arrived after it wrote the
+  older document over the newer one. In the product that is your partner's
+  furniture disappearing seconds after they place it. Strictly newer now, and
+  a poll that overlaps a write stands aside
+
 **What is still not right.** The game document is client authoritative: a
 determined player can write themselves any number of hearts. That is fine for
 a prototype where the only thing to win is your own house, and it is the next
@@ -362,6 +385,8 @@ mesh. Balance numbers all sit in one `BALANCE` object in `src/games.js`.
 - `docs/backend.sql` — the whole database in one runnable file
 - `tools/artifact_build.mjs` — inlines the sources and points three.js at a CDN
   for publishing as a hosted page. `node tools/artifact_build.mjs`
+- `tools/screen-pair-test.js` — real taps on real buttons, the harness polls
+  nothing, which is what catches a screen that never asks
 - `tools/guest-pair-test.js` — the path a couple takes, two guests and no
   test accounts at all
 - `tools/pairing-test.js` — two browsers, one database, every rule and every
