@@ -393,6 +393,22 @@ const Onboard = {
       Track.fire("pair_fork_chosen", { choice:"solo" });
       this.go("tour");
     };
+    // a nest you have left is reachable here and nowhere else in the flow
+    Api.call("GET", "/nests/archived").then(a => {
+      if(!a.nests.length || this.step !== "fork") return;
+      const link = el(`<button class="ob-quiet">Settings and nests you have left</button>`);
+      link.onclick = () => this.go("settings");
+      s.appendChild(link);
+    });
+  },
+  s_settings(){
+    this.top(null);
+    Diorama.orbit = 1.5 * Math.PI / 180;
+    const sheet = this.sheet(`<div class="ob-card"><p class="ob-h">Settings</p>
+      <div id="ob-set"></div>
+      <button class="ob-quiet" id="ob-setback">Back</button></div>`);
+    sheet.querySelector("#ob-setback").onclick = () => this.go("fork");
+    App.openSettings(sheet.querySelector("#ob-set"));
   },
 
   /* A read only look at the demo nest, with the invite always one tap away. */

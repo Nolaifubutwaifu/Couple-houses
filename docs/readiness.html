@@ -163,7 +163,7 @@ footer strong{color:var(--ink); font-weight:600}
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">Build assessment · 4 September 2026 · gap one now addressed</p>
+  <p class="eyebrow">Build assessment · 4 September 2026 · gaps one and three addressed</p>
   <h1>What stands between NEST and the App Store</h1>
   <p class="standfirst">Four sessions in, NEST has a validated look, an unusually complete
   onboarding flow, and an art bible enforced in code. What it does not have is a game, a
@@ -186,7 +186,7 @@ footer strong{color:var(--ink); font-weight:600}
     <dt>Time to finish the game</dt><dd>about six months</dd>
     <dt>Onboarding vs gameplay</dt><dd>17 screens vs 3</dd>
     <dt>Backend</dt><dd>none, localStorage only</dd>
-    <dt>Store blockers found</dt><dd>2 automatic rejections</dd>
+    <dt>Store blockers found</dt><dd>2, both now addressed</dd>
     <dt>Lot triangles</dt><dd>96,142 of a 100,000 budget</dd>
   </dl>
 </header>
@@ -320,52 +320,56 @@ push, deep links, cross device sync  <b>none</b></div>
 
 <section>
   <h2>Gap three: it would not pass review</h2>
-  <p class="lede">Two of these are automatic rejections rather than judgement calls, and
-  both are cheaper to design now than to retrofit. The joint data question underneath
-  them is the one I would think hardest about, because it shapes the schema.</p>
+  <p class="lede">At the time of the audit, two of these were automatic rejections. Both
+  are now built, and the joint data question underneath them is decided and recorded, so
+  the schema can be designed against something written down.</p>
 
-  <div class="find stop">
-    <span class="tag blocking">Blocking · Guideline 5.1.1(v)</span>
-    <h3>An app with accounts must let people delete the account inside the app</h3>
-    <p>Mandatory since 2022, checked on nearly every submission, and there is nothing in
-    the codebase. Settings offers exactly one action, leaving a nest, which is not the
-    same thing and does not satisfy it.</p>
-    <div class="evidence">grep for delete_account|deleteAccount|erase  →  <b>0 matches</b>
-settings actions available  →  <b>1</b> (leave nest)</div>
-  </div>
-
-  <div class="find stop">
-    <span class="tag blocking">Blocking · Guideline 1.2</span>
-    <h3>The street is user generated content, with none of what that requires</h3>
-    <p>Nest names, taglines and the homes themselves are content one couple publishes for
-    strangers to see. Apple requires a content filter, a mechanism to report objectionable
-    content, a way to block abusive users, published contact details, and action within
-    twenty four hours. None of the five exists.</p>
-    <p>This is the likeliest rejection for this product specifically, and it is not only a
-    store problem. A public wall in a relationship app is a harassment surface, and the
-    moderation design has to come before launch rather than after the first incident.</p>
-    <div class="evidence">filter · report · block · contact · 24h response  →  <b>0 of 5</b></div>
+  <div class="find">
+    <span class="tag done">Fixed since this audit · Guideline 5.1.1(v)</span>
+    <h3>Account deletion is now inside the app</h3>
+    <p>Under the settings control on the dome. Immediate, irreversible, confirmed by
+    typing the word. The person's name, birthday, identity and their own answers are
+    erased; the nest they were in freezes rather than dying, because the other person
+    built it too. Verified: the deleted row is nulled, the identity mapping is gone, the
+    partner and the home are untouched.</p>
+    <div class="evidence">POST /users/me/delete  →  user nulled, identity removed, nest frozen
+settings actions now  →  <b>leave · delete account · nests you have left</b></div>
   </div>
 
   <div class="find">
-    <span class="tag missing">Undecided</span>
+    <span class="tag done">Fixed since this audit · Guideline 1.2</span>
+    <h3>The street now has what user generated content requires</h3>
+    <p>A filter runs on every piece of text at publish time and rejects slurs, links,
+    email addresses and phone numbers, saying which and why. Any home can be reported with
+    a named reason, which hides it from the reporter immediately. Blocking is reversible.
+    The contact is printed on the street itself. The fifth requirement, a person acting
+    within a day, is a commitment rather than code; the queue they would work exists and
+    reports land in it.</p>
+    <p>Honest caveat: the word list is a placeholder. Real moderation is a service that
+    keeps up with how people evade one.</p>
+    <div class="evidence">filter · report · block · contact  →  <b>4 of 4 in code</b>
+24h response  →  <b>a rota, not a function</b></div>
+  </div>
+
+  <div class="find">
+    <span class="tag done">Decided, written down, implemented</span>
     <h3>Whose data is a shared nest?</h3>
-    <p>Two people jointly create one object. When one of them asks to be erased, the other
-    has an equal claim to the same record: the home they built, the streak, the photos of
-    their relationship. Under GDPR both requests are legitimate and they conflict. This
-    needs a decided policy, written down, before anyone designs the database, because
-    retrofitting it means migrating the exact data people are angry about.</p>
+    <p>Recorded in <code style="font-family:'IBM Plex Mono',monospace;font-size:13px">docs/joint-data-policy.md</code>.
+    A nest freezes: it is never inherited by whoever stays and never destroyed by
+    whoever goes, because either of those lets one person act unilaterally against the
+    other. Personal data is erased on deletion; joint creative output is not. The test for
+    which side a field falls on is whether one person could have produced it alone.
+    Freezing is one function, so leaving and deleting cannot drift apart.</p>
   </div>
 
   <div class="find">
-    <span class="tag missing">Missing</span>
-    <h3>There is no breakup</h3>
-    <p>A relationship product without an exit is not finished. Right now there is no
-    flow for ending a nest, no answer to who keeps it, no archive, no way to start again
-    with someone else without the old one surfacing. The art bible already gestures at an
-    archived nest, and the onboarding spec says it must never appear in the flow, but
-    nothing implements either. This is the moment your product is most likely to hurt
-    someone, and it deserves the same care as the ceremony.</p>
+    <span class="tag done">Fixed since this audit</span>
+    <h3>Leaving exists, and it is one neutral action</h3>
+    <p>By decision, not a staged breakup: leaving is leaving whatever the reason, with a
+    plain account of what will happen given a whole screen rather than a dialog. The nest
+    freezes for both, both can still look at it from settings, and it never appears in the
+    onboarding flow, so a previous relationship does not greet somebody starting again.
+    Verified: the fork screen after leaving does not mention the old nest by name.</p>
   </div>
 
   <div class="find">
@@ -405,11 +409,14 @@ settings actions available  →  <b>1</b> (leave nest)</div>
       instancing or another pass at the bevel segments.</span>
     </li>
     <li>
-      <h3>Decide the breakup, the deletion and the joint data policy</h3>
-      <p>Write down what happens to a shared nest when one person leaves, when one person
-      demands erasure, and when someone starts again. A page of decisions, not code.</p>
-      <span class="why"><b>Why here:</b> it determines the schema, so it has to precede
-      the backend rather than follow it.</span>
+      <h3>Decide the breakup, the deletion and the joint data policy <span class="tag done" style="vertical-align:middle;margin:0 0 0 6px">Done</span></h3>
+      <p>Decided and recorded in <code style="font-family:'IBM Plex Mono',monospace;font-size:13px">docs/joint-data-policy.md</code>,
+      and implemented in the prototype: a nest freezes, personal data goes, joint output
+      stays, leaving is one neutral action, deletion is immediate. Moderation for the
+      street was built in the same pass since it touches the same surface.</p>
+      <span class="why"><b>What the backend inherits:</b> the freeze lives in one function,
+      archived nests are reachable only from settings, and deletion has to reach backups,
+      analytics and third parties, which the prototype cannot show.</span>
     </li>
     <li>
       <h3>Pick the client platform and prove one scene on a real phone</h3>

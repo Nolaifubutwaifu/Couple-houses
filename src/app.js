@@ -122,6 +122,10 @@ const App = {
         if(fresh){ state = fresh; state.couple = this.couple(this.me); refreshWorld(); render(); }
       }
       if(msg.type === "nest.named"){ this.me.nest.name = msg.payload.name; render(); }
+      if(msg.type === "nest.frozen" && msg.payload.by !== Api.Session.userId){
+        toast("This nest has been frozen.");
+        setTimeout(() => App.restart(), 1800);
+      }
     });
   },
   couple(me){
@@ -143,22 +147,120 @@ const App = {
     }catch(err){ /* fall through to the in app version */ }
     toast(body);
   },
-  openSettings(){
-    const s = $("#sheet");
+  /* Leaving or deleting drops you back to the start of the flow in place.
+     Reloading the page would do it too, and would also throw away the frame
+     for a beat on the one screen where a white flash is least welcome. */
+  restart(){
+    state = null; held = null; viewingLot = null; activeGame = null;
+    this.me = null;
     route = { tab:"home", view:null };
+    $("#sheet").innerHTML = "";
+    $("#bar").hidden = $("#tabs").hidden = $("#tools").hidden = true;
+    Diorama.setHeld(null);
+    Diorama.pulseTarget(null);
+    Onboard.demoShown = false;
+    Onboard.begin();
+  },
+
+  /* Settings is where the two irreversible things live, and both of them say
+     exactly what will happen before they happen. No modal confirms: the
+     consequences need more room than a dialog gives them. */
+  async openSettings(host){
+    const s = host || $("#sheet");
+    if(!host) route = { tab:"home", view:null };
     s.innerHTML = "";
     const me = this.me;
     const other = me && me.members.find(m => m.user_id !== Api.Session.userId);
-    s.appendChild(el(`<div class="card">
-      <p class="h">Nest settings</p>
-      <p class="s dim">${esc(me ? (me.nest.name || "Your nest") : "Your nest")}${
-        other && other.user ? " · with " + esc(other.user.display_name) : ""}</p>
-      <button class="btn" id="set-leave" style="margin-top:12px">Leave this nest</button></div>`));
-    s.querySelector("#set-leave").onclick = async () => {
-      if(!confirm("Leave this nest? Your partner keeps it.")) return;
-      await Api.call("POST", "/nests/" + me.nest.id + "/leave", {});
-      location.reload();
+    if(me && me.nest){
+      s.appendChild(el(`<div class="card">
+        <p class="h">${esc(me.nest.name || "Your nest")}</p>
+        <p class="s dim">${other && other.user ? "With " + esc(other.user.display_name) : "Just you"} ·
+          started ${new Date(me.nest.created_at).toLocaleDateString()}</p></div>`));
+      const leave = el(`<div class="card">
+        <p class="h">Leave this nest</p>
+        <p class="s dim">The nest stops here for both of you. Nothing is deleted and nobody
+        keeps it: it freezes exactly as it is, and neither of you can place anything, earn
+        anything or rename it again. You will both still be able to look at it from
+        settings, and you will both be free to start a new one.</p>
+        <button class="btn" id="set-leave" style="margin-top:12px">Leave this nest</button></div>`);
+      leave.querySelector("#set-leave").onclick = () => this.confirmLeave(s, me);
+      s.appendChild(leave);
+    }
+
+    const arch = await Api.call("GET", "/nests/archived");
+    if(arch.nests.length){
+      s.appendChild(el(`<p class="lbl">Nests you have left</p>`));
+      arch.nests.forEach(n => {
+        const names = n.members.map(m => m.name || "Someone").join(" and ");
+        const card = el(`<button class="row"><div><p class="h">${esc(n.name || "A nest")}</p>
+          <p class="s dim">${esc(names)} · frozen ${new Date(n.archived_at).toLocaleDateString()}</p></div></button>`);
+        card.onclick = () => this.showArchived(n);
+        s.appendChild(card);
+      });
+    }
+
+    const del = el(`<div class="card" style="margin-top:14px">
+      <p class="h">Delete your account</p>
+      <p class="s dim">Your name, your birthday and your answers are erased and cannot be
+      recovered. Any nest you are in freezes, the same as leaving, because the other person
+      built it too and it is theirs as much as yours. Your name is removed from it.</p>
+      <label class="f" style="margin-top:12px"><span>Type delete to confirm</span>
+        <input id="set-del-word" autocomplete="off" placeholder="delete"></label>
+      <button class="btn" id="set-del">Delete my account</button></div>`);
+    del.querySelector("#set-del").onclick = async () => {
+      if(del.querySelector("#set-del-word").value.trim().toLowerCase() !== "delete")
+        return toast("Type delete to confirm");
+      const btn = del.querySelector("#set-del");
+      btn.disabled = true; btn.textContent = "Deleting";
+      await Api.call("POST", "/users/me/delete", {});
+      toast("Your account is gone");
+      this.restart();
     };
+    s.appendChild(del);
+  },
+  confirmLeave(s, me){
+    const other = me.members.find(m => m.user_id !== Api.Session.userId);
+    s.innerHTML = "";
+    const card = el(`<div class="card">
+      <p class="h">Freeze this nest?</p>
+      <p class="s dim">${other && other.user ? esc(other.user.display_name) + " will be told." : ""}
+      Neither of you will be able to change it again. It stays where you can both see it.</p>
+      <button class="btn go" id="yes" style="margin-top:14px">Yes, freeze it</button>
+      <button class="ob-quiet" id="no">Not now</button></div>`);
+    card.querySelector("#no").onclick = () => this.openSettings();
+    card.querySelector("#yes").onclick = async () => {
+      card.querySelector("#yes").disabled = true;
+      await Api.call("POST", "/nests/" + me.nest.id + "/leave", {});
+      this.restart();
+    };
+    s.appendChild(card);
+  },
+  /* A nest you have left is read only, and reachable from settings and from
+     nowhere else, so a previous relationship never appears in the flow. */
+  showArchived(nest){
+    const g = Api.db.game[nest.id];
+    const names = nest.members.map(m => m.name || "Someone");
+    document.body.classList.add("onboarding");
+    $("#onboard").hidden = false;
+    Diorama.frameShift = 0.34;
+    Diorama.setBase(nest.base_material, nest.terrain_type);
+    Diorama.setLot(g ? g.house : { rooms:{ living:{ unlocked:true } }, placed:[] },
+      { partnerA:names[0] || "", partnerB:names[1] || "" }, "frozen");
+    Diorama.applyState("resting", seasonNow());
+    Diorama.applyView();
+    $("#ob-top").innerHTML = "";
+    const sheet = $("#ob-sheet");
+    sheet.innerHTML = "";
+    sheet.hidden = false;
+    const card = el(`<div class="ob-card">
+      <p class="ob-h">${esc(nest.name || "A nest")}</p>
+      <p class="s dim">${esc(names.map(n => n || "Someone").join(" and "))} · ${
+        g ? g.house.placed.length : 0} things placed · frozen ${
+        new Date(nest.archived_at).toLocaleDateString()}</p>
+      <p class="s dim">This one is finished. You can look at it, and that is all.</p>
+      <button class="btn go" id="arch-back" style="margin-top:12px">Close</button></div>`);
+    card.querySelector("#arch-back").onclick = () => App.restart();
+    sheet.appendChild(card);
   },
 };
 
@@ -167,7 +269,9 @@ const save = () => App.saveGame();
 const uid = () => Math.random().toString(36).slice(2, 10);
 /* Spec section 5: a solo user earns nothing and places nothing. The guard is
    here as well as structural, so a future screen cannot route around it. */
+function frozen(){ return !!(state && state.frozen); }
 function paired(){
+  if(frozen()) return false;
   return !!(App.me && App.me.nest && App.me.nest.status === "active" &&
             App.me.members.filter(m => m.status === "active").length === 2);
 }
@@ -359,6 +463,30 @@ function screenBuild(root){
   root.appendChild(grid);
 }
 
+/* Reporting names what is wrong, hides it from you immediately, and tells you
+   what happens next. Nobody should have to keep looking at something while a
+   queue is worked through. */
+function reportSheet(h){
+  const s = $("#sheet");
+  s.innerHTML = "";
+  const card = el(`<div class="card"><p class="h">Report ${esc(h.name)}</p>
+    <p class="s dim">Tell us what is wrong. It disappears from your street straight away,
+    and a person looks at it within a day.</p><div class="opts" id="rr"></div>
+    <button class="ob-quiet" id="rcancel">Cancel</button></div>`);
+  s.appendChild(card);
+  card.querySelector("#rcancel").onclick = () => { viewingLot = null; refreshWorld(); go("show"); };
+  ["Hateful or abusive", "Sexual content", "Harassment of someone I know",
+   "Spam or advertising", "Something else"].forEach(reason => {
+    const b = el(`<button class="opt">${esc(reason)}</button>`);
+    b.onclick = async () => {
+      const r = await Api.call("POST", "/nests/" + h.id + "/report", { reason });
+      toast("Reported. It is off your street.");
+      viewingLot = null; refreshWorld(); go("show");
+    };
+    card.querySelector("#rr").appendChild(b);
+  });
+}
+
 async function screenShowcase(root){
   if(route.view && route.view.house){
     const h = route.view.house;
@@ -375,25 +503,47 @@ async function screenShowcase(root){
       const b = el(`<button class="btn ${liked ? "" : "go"}">${liked ? "Loved" : "Leave a heart"}</button>`);
       b.onclick = async () => { await Store.likeHouse(state, h.id); render(); };
       root.appendChild(b);
+      const row = el(`<div class="ob-row2" style="margin-top:9px">
+        <button class="btn sm" id="rep">Report</button>
+        <button class="btn sm" id="blk">Block</button></div>`);
+      row.querySelector("#rep").onclick = () => reportSheet(h);
+      row.querySelector("#blk").onclick = async () => {
+        const r = await Api.call("POST", "/nests/" + h.id + "/block", {});
+        toast(r.blocked ? "Hidden from your street" : "Unblocked");
+        viewingLot = null; refreshWorld(); go("show");
+      };
+      root.appendChild(row);
     }
     return;
   }
 
   root.appendChild(el(`<p class="note">A local preview of the street. Real couples appear once NEST goes online.</p>`));
+  const mod = await Api.call("GET", "/moderation");
   if(!state.showcase.published){
     const c = el(`<div class="card"><p class="h">Your nest is private</p>
       <p class="s dim">Publish it and it joins the street, ranked by charm.</p>
       <label class="f"><span>One line about you two</span><input id="tag" maxlength="52" placeholder="Still buying chairs."></label>
       <button class="btn go" id="pub">Publish</button></div>`);
     c.querySelector("#pub").onclick = async () => {
-      state.showcase.tagline = c.querySelector("#tag").value.trim();
-      state.showcase.published = true;
-      await save(); toast("You are on the street"); render();
+      const btn = c.querySelector("#pub");
+      btn.disabled = true; btn.textContent = "Publishing";
+      try{
+        const r = await Api.call("POST", "/nests/" + App.me.nest.id + "/publish",
+          { tagline:c.querySelector("#tag").value.trim() });
+        state.showcase.tagline = r.tagline;
+        state.showcase.published = true;
+        await save(); toast("You are on the street"); render();
+      }catch(err){
+        btn.disabled = false; btn.textContent = "Publish";
+        c.appendChild(el(`<div class="ob-err">${esc(err.reason || "That did not publish. Try again?")}</div>`));
+      }
     };
     root.appendChild(c);
   }
 
-  const houses = await Store.listShowcase(state);
+  const all = await Store.listShowcase(state);
+  const houses = all.filter(h => mod.blocked.indexOf(h.id) < 0);
+  const hidden = all.length - houses.length;
   houses.forEach((h, i) => {
     const liked = state.showcase.likesGiven.includes(h.id);
     const card = el(`<button class="hcard">
@@ -405,6 +555,10 @@ async function screenShowcase(root){
     card.onclick = () => { viewingLot = h; refreshWorld(); go("show", { house:h }); };
     root.appendChild(card);
   });
+  root.appendChild(el(`<p class="s dim mid" style="margin-top:16px">${
+    hidden ? hidden + (hidden === 1 ? " home is" : " homes are") + " hidden because you blocked or reported "
+      + (hidden === 1 ? "it" : "them") + ". " : ""}Something wrong on the street? Report it from the
+    home itself, or write to ${esc(mod.contact)}.</p>`));
 }
 
 /* ---- render ---- */
@@ -417,7 +571,9 @@ async function render(){
   bar.innerHTML = "";
   bar.appendChild(el(`<div class="barin"><div><p class="brand">NEST</p>
     <p class="s dim">${esc((App.me && App.me.nest.name) || state.couple.name)}</p></div>
-    <span class="purse">${state.wallet.coins.toLocaleString()}</span></div>`));
+    <span class="purse">${state.wallet.coins.toLocaleString()}</span>
+    <button class="cog" id="cog" title="Settings" aria-label="Settings">···</button></div>`));
+  bar.querySelector("#cog").onclick = () => App.openSettings();
   tabs.querySelectorAll("button").forEach(b => b.setAttribute("aria-current", String(b.dataset.tab === route.tab)));
   if(route.tab === "home") screenHome(sheet);
   else if(route.tab === "play") screenPlay(sheet);

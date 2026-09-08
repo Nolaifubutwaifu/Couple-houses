@@ -96,7 +96,8 @@ const Session = {
     if(!this.userId && !onInvite){
       try{ this.userId = localStorage.getItem(SESSION_KEY + ".last") || null; }catch(err){ /* ignore */ }
     }
-    if(this.userId && !DB.users[this.userId]) this.userId = null;
+    const u = this.userId ? DB.users[this.userId] : null;
+    if(!u || u.deleted) this.userId = null;
     return this.userId;
   },
   set(id){
@@ -343,6 +344,8 @@ const routes = {
     if(membershipsOf(nest.id, "active").length < 2) throw apiError(409, "not_paired");
     const n = (name || "").trim();
     if(n.length < 1 || n.length > 20) throw apiError(400, "bad_name");
+    const check = moderate(n);
+    if(!check.ok) throw apiError(422, "rejected", { reason:check.reason });
     nest.name = n;
     saveDB();
     Realtime.emit("nest.named", { nest_id:nest.id, name:n });
@@ -365,7 +368,7 @@ const routes = {
     const m = activeMembershipFor(u.id) || pendingMembershipFor(u.id);
     if(!m) return { user:u, nest:null };
     const nest = DB.nests[m.nest_id];
-    if(!nest) return { user:u, nest:null };
+    if(!nest || nest.status === "archived") return { user:u, nest:null };
     const members = membershipsOf(nest.id).filter(x => x.status !== "left").map(x => ({
       ...x, user:DB.users[x.user_id],
     }));
@@ -375,15 +378,152 @@ const routes = {
              pending_partner: pending ? DB.users[pending.user_id] : null };
   },
 
+  /* Leaving freezes the nest for both people. It is not deleted and it is not
+     handed to whoever stayed: it becomes a record neither of them can change.
+     Both keep the ability to look at it, neither can add to it, and both are
+     free to start again with someone else. */
   "POST /nests/{id}/leave"({ id }){
-    const m = Object.values(DB.memberships).find(x => x.nest_id === id && x.user_id === Session.userId);
-    if(m) m.status = "left";
     const nest = DB.nests[id];
-    if(nest && membershipsOf(id, "active").length === 0) nest.status = "archived";
+    if(!nest) throw apiError(404, "no_nest");
+    const mine = Object.values(DB.memberships).find(x => x.nest_id === id && x.user_id === Session.userId);
+    if(!mine || mine.status !== "active") throw apiError(409, "not_a_member");
+    freezeNest(nest, Session.userId, "left");
     saveDB();
-    return { ok:true };
+    Realtime.emit("nest.frozen", { nest_id:nest.id, by:Session.userId });
+    return { nest };
+  },
+
+  /* Guideline 5.1.1(v): an account can be deleted from inside the app. The
+     person's own data goes. The nest does not, because the other person has an
+     equal claim to the same record, so it freezes exactly as leaving does and
+     the departed name is replaced rather than kept. */
+  "POST /users/me/delete"(){
+    const u = Session.user;
+    if(!u) throw apiError(401, "no_session");
+    Object.values(DB.memberships)
+      .filter(m => m.user_id === u.id)
+      .forEach(m => {
+        const nest = DB.nests[m.nest_id];
+        if(nest && nest.status !== "archived") freezeNest(nest, u.id, "deleted");
+        // the answers were theirs, so they go with them
+        const g = DB.game[m.nest_id];
+        if(g && g.streak){
+          const side = m.role === "founder" ? "a" : "b";
+          g.streak[side + "Ans"] = null;
+          if(g.ritualLog) g.ritualLog.forEach(r => { delete r[side]; });
+        }
+      });
+    Object.keys(DB.identities).forEach(k => { if(DB.identities[k] === u.id) delete DB.identities[k]; });
+    Object.keys(DB.emailCodes).forEach(k => { if(k === u.auth_subject) delete DB.emailCodes[k]; });
+    DB.users[u.id] = {
+      id:u.id, deleted:true, deleted_at:now(),
+      auth_provider:null, auth_subject:null, display_name:null, birthdate:null,
+      created_at:u.created_at, locale:null, push_token:null, age_verified:false,
+    };
+    saveDB();
+    Realtime.emit("user.deleted", { user_id:u.id });
+    Session.clear();
+    return { deleted:true };
+  },
+
+  /* Archived nests are reachable from settings and from nowhere else, so the
+     onboarding flow never surfaces a previous relationship. */
+  /* Publishing is the moment text becomes other people's problem, so the
+     filter sits here rather than on the input. */
+  "POST /nests/{id}/publish"({ id, tagline }){
+    const nest = DB.nests[id];
+    if(!nest) throw apiError(404, "no_nest");
+    const check = moderate(tagline);
+    if(!check.ok) throw apiError(422, "rejected", { reason:check.reason });
+    const g = DB.game[id];
+    if(g){ g.showcase.tagline = check.text; g.showcase.published = true; }
+    saveDB();
+    return { tagline:check.text };
+  },
+
+  "POST /nests/{id}/report"({ id, reason }){
+    const u = Session.user;
+    if(!u) throw apiError(401, "no_session");
+    DB.reports = DB.reports || {};
+    const r = { id:rid("rep"), target:id, by:u.id, reason:reason || "unspecified",
+                at:now(), status:"open" };
+    DB.reports[r.id] = r;
+    // hidden from the reporter straight away: they should not have to keep
+    // looking at it while a person works through the queue
+    u.blocked = u.blocked || [];
+    if(u.blocked.indexOf(id) < 0) u.blocked.push(id);
+    saveDB();
+    return { report:r, contact:CONTACT_EMAIL };
+  },
+  "POST /nests/{id}/block"({ id }){
+    const u = Session.user;
+    if(!u) throw apiError(401, "no_session");
+    u.blocked = u.blocked || [];
+    const at = u.blocked.indexOf(id);
+    if(at >= 0) u.blocked.splice(at, 1); else u.blocked.push(id);
+    saveDB();
+    return { blocked:u.blocked.indexOf(id) >= 0 };
+  },
+  "GET /moderation"(){
+    const u = Session.user;
+    DB.reports = DB.reports || {};
+    return { blocked:(u && u.blocked) || [], contact:CONTACT_EMAIL,
+             open_reports:Object.values(DB.reports).filter(r => r.status === "open").length };
+  },
+
+  "GET /nests/archived"(){
+    const u = Session.user;
+    if(!u) return { nests:[] };
+    return { nests: Object.values(DB.memberships)
+      .filter(m => m.user_id === u.id && m.status === "left")
+      .map(m => DB.nests[m.nest_id])
+      .filter(n => n && n.status === "archived")
+      .map(n => ({ ...n, members: membershipsOf(n.id).map(x => ({
+        role:x.role, name:nameOf(x.user_id) })) }))
+      .sort((a, b) => (b.archived_at || 0) - (a.archived_at || 0)) };
   },
 };
+
+/* ---- moderation, Guideline 1.2 ----
+   The street is content one couple publishes for strangers, which means a
+   filter, a way to report, a way to block, a published contact and a human
+   who acts within a day. The first four are here. The fifth is a commitment
+   a team makes, not a function, and this list is a stand in: a real build
+   sends text to a service that keeps up with how people actually evade one. */
+const BLOCKED_WORDS = ["slur1", "slur2", "hateword"];   // placeholder, see above
+const CONTACT_EMAIL = "safety@nest.app";
+function moderate(text){
+  const t = String(text || "");
+  if(!t.trim()) return { ok:true, text:t };
+  const low = t.toLowerCase();
+  if(BLOCKED_WORDS.some(w => low.includes(w)))
+    return { ok:false, reason:"That word cannot go on the street." };
+  if(/https?:\/\/|www\.|\.(com|net|org|io|co)\b/i.test(t))
+    return { ok:false, reason:"Links are not allowed here." };
+  if(/[\w.+-]+@[\w-]+\.[\w.]+/.test(t))
+    return { ok:false, reason:"Leave your email out of it, for your own sake." };
+  if(/(\+?\d[\d\s().-]{7,}\d)/.test(t))
+    return { ok:false, reason:"Leave phone numbers out of it, for your own sake." };
+  return { ok:true, text:t.trim() };
+}
+
+/* One place decides what freezing means, so leaving and deleting cannot drift
+   apart and neither can be made to skip a step. */
+function freezeNest(nest, byUserId, reason){
+  nest.status = "archived";
+  nest.archived_at = now();
+  nest.archived_by = byUserId;
+  nest.archive_reason = reason;
+  membershipsOf(nest.id).forEach(m => { if(m.status === "active") m.status = "left"; });
+  Object.values(DB.invites).forEach(i => { if(i.nest_id === nest.id && i.status === "open") i.status = "revoked"; });
+  const g = DB.game[nest.id];
+  if(g){ g.frozen = true; g.frozen_at = now(); }
+}
+function nameOf(userId){
+  const u = DB.users[userId];
+  if(!u) return "Someone";
+  return u.deleted ? null : u.display_name;
+}
 
 function issueInvite(nestId, byUserId){
   Object.values(DB.invites).forEach(i => {
@@ -397,26 +537,41 @@ function issueInvite(nestId, byUserId){
   return inv;
 }
 
+/* Match a path against the route table segment by segment. Guessing which
+   segment is an id from its shape works right up until an id does not look
+   the way you guessed, which is how a seeded house stopped being reportable. */
+const ROUTE_TABLE = Object.keys(routes).map(k => {
+  const sp = k.indexOf(" ");
+  return { key:k, method:k.slice(0, sp), parts:k.slice(sp + 1).split("/").filter(Boolean) };
+});
+function matchRoute(method, path){
+  const parts = path.split("?")[0].split("/").filter(Boolean);
+  for(const r of ROUTE_TABLE){
+    if(r.method !== method || r.parts.length !== parts.length) continue;
+    const params = {};
+    let ok = true;
+    for(let i = 0; i < parts.length; i++){
+      const t = r.parts[i];
+      if(t.charAt(0) === "{") params[t.slice(1, -1)] = decodeURIComponent(parts[i]);
+      else if(t !== parts[i]){ ok = false; break; }
+    }
+    if(ok) return { route:routes[r.key], params, key:r.key };
+  }
+  return null;
+}
+
 /* One entry point, shaped like the transport it replaces. Latency is real
    so every screen has to have something to show while it waits. */
 const Api = {
   Realtime, Session,
   get db(){ return DB; },
   async call(method, path, body){
-    const key = method + " " + path.replace(/\/(?:[A-Z0-9]{6}|nst_[a-z0-9]+)(?=\/|$)/g, m => {
-      return /^\/[A-Z0-9]{6}$/.test(m) ? "/{code}" : "/{id}";
-    });
-    const route = routes[key];
     await new Promise(r => setTimeout(r, LATENCY));
     if(!Realtime.online) throw apiError(0, "offline");
-    if(!route) throw apiError(404, "no_route:" + key);
-    const params = {};
-    const codeM = path.match(/\/([A-Z0-9]{6})(?=\/|$)/);
-    if(codeM) params.code = codeM[1];
-    const idM = path.match(/\/(nst_[a-z0-9]+)(?=\/|$)/);
-    if(idM) params.id = idM[1];
+    const hit = matchRoute(method, path);
+    if(!hit) throw apiError(404, "no_route:" + method + " " + path);
     syncDB();
-    const out = route({ ...params, ...(body || {}) });
+    const out = hit.route({ ...hit.params, ...(body || {}) });
     saveDB();
     return out;
   },

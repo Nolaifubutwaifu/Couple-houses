@@ -202,6 +202,33 @@ behind one `Api.call(method, path, body)`. Calls carry real latency so every
 screen has to have something to show while it waits, and nothing blocks longer
 than about 220ms.
 
+## Leaving, deletion and moderation
+
+The decisions are recorded in `docs/joint-data-policy.md`. The short version:
+
+**A nest freezes rather than transferring or dying.** When either partner
+leaves or deletes their account, the home becomes read only for both. Nothing
+is removed, neither can change it again, both can still look at it, and both
+are free to start again. It is the only arrangement where neither person can
+act unilaterally against the other.
+
+**Personal data goes, joint output stays.** Deleting erases the leaver's name,
+birthday, identity and their own answers, and removes their name from the nest.
+The furniture and the streak remain, because the other person made those too.
+The test for which side a field falls on is whether one person could have
+produced it alone.
+
+**Account deletion is in the app**, under the settings control on the dome,
+which is what Guideline 5.1.1(v) has required since 2022. It is immediate,
+irreversible and confirmed by typing the word rather than tapping a button.
+
+**The street has the five things Guideline 1.2 asks for.** A filter that runs
+at publish time and rejects slurs, links, emails and phone numbers with a
+reason; a report action with named reasons that hides the home from you
+straight away; a reversible block; and a published contact on the street
+itself. The fifth, acting within a day, is a commitment rather than code, and
+the report queue a moderator would work is there.
+
 ## The two seams
 
 **Storage.** Nothing outside `LocalStore` touches `localStorage`. Swapping in a
