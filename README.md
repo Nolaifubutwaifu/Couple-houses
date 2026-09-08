@@ -251,6 +251,21 @@ asserts a signed in stranger can read no nest, no membership, no invite, no
 report and no profile but their own, and can neither write to a nest nor join
 one.
 
+**Three things stand between opt in and default**, all of them settings on the
+Supabase project rather than code:
+
+1. **Custom SMTP.** The built in mailer only delivers to the project's own
+   team and is rate limited. Until this is set, nobody else can sign in.
+2. **`{{ .Token }}` in the email templates.** The stock Magic Link and Confirm
+   Signup templates send a link, not a six digit code, and this product asks
+   for a code. Both templates need the token in them.
+3. **Password sign in off.** The product has no passwords. Leaving the
+   password grant enabled is a login path nothing in the app uses, and it is
+   the only reason the project's advisor list mentions leaked password
+   protection at all.
+
+Then `autoEnable: true` in `src/backend.js`.
+
 **What is still not right.** The game document is client authoritative: a
 determined player can write themselves any number of hearts. That is fine for
 a prototype where the only thing to win is your own house, and it is the next
