@@ -185,10 +185,11 @@ const Onboard = {
     const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">Begin</p>
       <p class="s dim">One tap. No passwords, ever.</p>
-      <div class="ob-auth">
+      <div class="ob-auth">${Api.backend ? `
+        <button class="btn go" data-p="email">Continue with email</button>` : `
         <button class="btn go ob-apple" data-p="apple">Sign in with Apple</button>
         <button class="btn ob-prov" data-p="google">Continue with Google</button>
-        <button class="btn ob-prov" data-p="email">Continue with email</button>
+        <button class="btn ob-prov" data-p="email">Continue with email</button>`}
       </div>
       <p class="ob-legal">By continuing you agree to our <a href="#terms" id="ob-terms">Terms</a> and
         <a href="#privacy" id="ob-priv">Privacy Policy</a>.</p>
@@ -197,7 +198,7 @@ const Onboard = {
     s.querySelectorAll("[data-p]").forEach(b => {
       b.onclick = () => this.authWith(b.dataset.p);
     });
-    s.querySelector("#ob-have").onclick = () => this.authWith("apple");
+    s.querySelector("#ob-have").onclick = () => this.authWith(Api.backend ? "email" : "apple");
     ["#ob-terms", "#ob-priv"].forEach(id => {
       s.querySelector(id).onclick = e => { e.preventDefault(); this.legal(id === "#ob-terms" ? "Terms" : "Privacy Policy"); };
     });
@@ -273,10 +274,10 @@ const Onboard = {
   emailCode(email, devCode){
     const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">Check your email</p>
-      <p class="s dim">Six digits, sent to ${esc(email)}. It expires in ten minutes.</p>
+      <p class="s dim">Six digits, sent to ${esc(email)}.${devCode ? " It expires in ten minutes." : ""}</p>
       <div class="ob-boxes" id="ob-code"></div>
-      <p class="ob-sim">Nothing can send mail from a page, so here is the code the
-        backend generated: <b>${esc(devCode)}</b></p>
+      ${devCode ? `<p class="ob-sim">Nothing can send mail from a page, so here is the code the
+        backend generated: <b>${esc(devCode)}</b></p>` : ``}
       <div class="ob-err" id="ob-err" hidden></div>
       <button class="ob-quiet" id="ob-resend" disabled>Resend in 30s</button></div>`);
     this.codeBoxes(s.querySelector("#ob-code"), 6, "numeric", async value => {

@@ -54,6 +54,9 @@ const Realtime = {
   chan: null,
   subs: [],
   online: true,
+  /* the local store is the one that has to be re-read before a message is
+     handled. A backend has already told us what changed. */
+  usesLocalDB: true,
   init(){
     try{
       this.chan = new BroadcastChannel("nest.realtime");
@@ -71,7 +74,7 @@ const Realtime = {
     else try{ localStorage.setItem("nest.bus", JSON.stringify(msg)); }catch(err){ /* best effort */ }
   },
   deliver(msg){
-    syncDB();
+    if(this.usesLocalDB) syncDB();
     if(!this.online){ this.queued.push(msg); return; }
     this.subs.forEach(fn => { try{ fn(msg); }catch(err){ console.warn(err); } });
   },
@@ -564,8 +567,13 @@ function matchRoute(method, path){
    so every screen has to have something to show while it waits. */
 const Api = {
   Realtime, Session,
+  /* src/backend.js sets these two when a database is reachable. Every call
+     waits on the decision once, so no screen has to know which one it got. */
+  backend: null, readyP: null,
   get db(){ return DB; },
   async call(method, path, body){
+    if(this.readyP) await this.readyP;
+    if(this.backend) return this.backend.call(method, path, body);
     await new Promise(r => setTimeout(r, LATENCY));
     if(!Realtime.online) throw apiError(0, "offline");
     const hit = matchRoute(method, path);
@@ -575,7 +583,14 @@ const Api = {
     saveDB();
     return out;
   },
+  /* The game document belongs to the nest, so where the nest lives decides
+     where it is written. Locally that is the same localStorage blob the
+     store already wrote, so this is a no op. */
+  saveGame(g){
+    if(this.backend) return this.backend.saveGame(g);
+  },
   reset(){
+    if(this.backend) this.backend.sb.auth.signOut();
     DB = blankDB(); saveDB(); Session.clear();
   },
 };

@@ -178,19 +178,21 @@ Honest list, because these are the parts a real build has to do properly.
   an account handle and the same handle restores the same identity, which is
   what makes the reinstall case testable. The `POST /auth/session` shape is the
   real one.
-- **Email codes.** Nothing can send mail from a page, so the six digit code the
-  backend generated is shown on screen, clearly marked. Expiry and the thirty
-  second resend are real.
+- **Email codes.** With no backend, nothing can send mail from a page, so the
+  six digit code is shown on screen, clearly marked. With one, the code goes to
+  a real inbox and the on screen note disappears. Expiry and the thirty second
+  resend are real either way.
 - **Push.** The primer is real and calls the browser's permission prompt.
   Nudges fall back to an in app notice when permission is not granted. There is
   no device token and no server.
 - **Deferred deep links.** `?j=CODE` is read, stored, and read back after
   authentication, which delivers a linked user straight to confirm with no
   manual code entry. What is missing is the app store round trip.
-- **Realtime.** A BroadcastChannel between tabs, with a storage event fallback.
-  A real build needs a socket per nest.
-- **The database constraint.** Enforced in the store layer here. In production
-  the two active membership rule belongs in the schema, not in application code.
+- **Realtime.** With no backend, a BroadcastChannel between tabs and a storage
+  event fallback. With one, a Supabase broadcast channel per nest and a poll
+  that carries the transitions which must not be missed.
+- **The database constraint.** Enforced in the store layer with no backend. In
+  Postgres it is three partial unique indexes, which is where it belongs.
 
 **The funnel.** Every event in the spec's list fires, exactly as named, and
 nothing else can: firing an event not on the list logs a warning instead. Tap
@@ -201,6 +203,68 @@ invite latency.
 behind one `Api.call(method, path, body)`. Calls carry real latency so every
 screen has to have something to show while it waits, and nothing blocks longer
 than about 220ms.
+
+## The backend
+
+Two phones cannot pair through `localStorage`, so there is a real database
+behind this now: Postgres on Supabase, with the schema in `docs/backend.sql`.
+
+`src/backend.js` implements the same `Api.call(method, path, body)` surface
+against it. Nothing above it changed, because the endpoints were written to be
+a transport in the first place. It is not a rewrite, it is the other half of a
+seam that already existed.
+
+**It turns itself on or stays out of the way.** At boot it probes the database
+once. If that fails, for any reason at all, the local store runs exactly as it
+did before and nothing else in the app notices. A blocked sandbox, an offline
+phone, a paused project and no configuration at all are the same case, and the
+same fallback covers all four. `window.NEST_CONFIG = { url:"" }` forces it off,
+which is what the published artifact build does.
+
+**It is opt in, and there is one reason.** Visit with `?live` to use the real
+database; without it the local store runs. Supabase's built in mailer only
+delivers to the project's own team, so a stranger arriving at the public demo
+and signing in with their email would wait for a code that never comes. A
+working local demo beats a real backend nobody can get into. The fix is custom
+SMTP on the project, after which `autoEnable: true` in `src/backend.js` makes
+the database the default and this paragraph goes away.
+
+**What lives where.** Identity and email codes are Supabase Auth. The nest, the
+memberships, the invites and the reports are tables. The game itself is one
+`jsonb` document on the nest row, so both people read and write the same thing
+and a `rev` counter makes a stale write visible.
+
+**Rules are in the database, not in the client.** This is the part that
+mattered most, and testing found two holes that the local prototype could not
+have had, because there every write went through a route:
+
+- With an insert policy of "you may only add yourself", anyone holding a nest
+  id could add themselves to somebody else's nest as an active partner.
+- With an update policy of "you may change your own membership", anyone who had
+  claimed a code could promote themselves past the founder's confirmation,
+  which is the single rule the whole product rests on.
+
+Both are closed by having no insert or update policy on memberships or invites
+at all. Joining is `claim_invite` then `confirm_invite`, both of which are
+`security definer` functions, and there is no other way in. `tools/pairing-test.js`
+asserts a signed in stranger can read no nest, no membership, no invite, no
+report and no profile but their own, and can neither write to a nest nor join
+one.
+
+**What is still not right.** The game document is client authoritative: a
+determined player can write themselves any number of hearts. That is fine for
+a prototype where the only thing to win is your own house, and it is the next
+thing to move server side if the street ever ranks on anything earned.
+
+**Two devices, checked rather than assumed.** `node tools/pairing-test.js`
+drives two isolated browsers through founding, claiming, confirming, naming,
+spending, publishing, reporting, leaving and deleting against the live
+database: 49 assertions, including that each person sees the other's spending
+without touching the screen, that a frozen nest is readable by both and
+writable by neither, and that deleting one account takes that name off the nest
+and leaves the house standing. `node tools/local-test.js` runs the same flow
+with the backend switched off, so the fallback is a tested path rather than a
+hope.
 
 ## Leaving, deletion and moderation
 
@@ -231,14 +295,21 @@ the report queue a moderator would work is there.
 
 ## The two seams
 
-**Storage.** Nothing outside `LocalStore` touches `localStorage`. Swapping in a
-real backend means one object with the same four methods:
+**Storage.** Nothing outside `Store` touches persistence, and it is four
+methods wide:
 
 ```js
 const Store = { load(), save(state), listShowcase(state), likeHouse(state, id) };
 ```
 
-State carries a `schemaVersion` and migrates forward. Every read and write is
+Underneath it, every request is one call:
+
+```js
+Api.call(method, path, body)   // and Api.backend decides where it lands
+```
+
+That seam is the reason the database went in without a screen moving. State
+carries a `schemaVersion` and migrates forward. Every read and write is
 wrapped, so the app still boots in a private window or with site data blocked.
 
 **The renderer.** `src/diorama.js` owns everything about how a home looks and
@@ -253,13 +324,18 @@ mesh. Balance numbers all sit in one `BALANCE` object in `src/games.js`.
 - `src/diorama.js` — the four layers, camera, lighting, motion, offscreen renders
 - `src/bible.js` — the section 16 checks
 - `src/api.js` — the data model, the endpoints, invite codes, realtime
+- `src/backend.js` — the same endpoints against Postgres, and the probe that
+  decides which of the two is running
 - `src/analytics.js` — the funnel, and the only event names that exist
 - `src/onboarding.js` — the cold open through to the notification primer
 - `src/games.js` — the three games and the balance table
 - `src/app.js` — the app once two people are in it
 - `vendor/three.min.js` — pinned r149, so this runs with no network
+- `docs/backend.sql` — the whole database in one runnable file
 - `tools/artifact_build.mjs` — inlines the sources and points three.js at a CDN
   for publishing as a hosted page. `node tools/artifact_build.mjs`
+- `tools/pairing-test.js` — two browsers, one database, 49 assertions
+- `tools/local-test.js` — the same flow with no backend at all
 
 ## Delivery targets for the real build
 

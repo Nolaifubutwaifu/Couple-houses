@@ -12,6 +12,7 @@ const Store = {
   async save(g){
     if(!g || !g.nest_id) return false;
     Api.db.game[g.nest_id] = g;
+    Api.saveGame(g);                      // a real backend writes it to the nest row too
     try{ localStorage.setItem("nest.db.v1", JSON.stringify(Api.db)); }
     catch(err){ console.warn("save failed, this session is memory only", err); return false; }
     return true;

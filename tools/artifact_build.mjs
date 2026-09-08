@@ -18,7 +18,12 @@ const pick = (open, close) => {
 
 let body = html.slice(html.indexOf("<body>") + 6, html.lastIndexOf("</body>")).trim();
 
+/* The Artifact sandbox blocks fetch, XHR and websockets to every host, so a
+   published page can never reach the database. Saying so up front is better
+   than a four second probe that was always going to fail: the artifact is
+   the local demo, and the hosted site is the one that pairs. */
 body = body.replace(/<script src="vendor\/three\.min\.js"><\/script>/,
+  `<script>window.NEST_CONFIG = { url:"" };  /* artifact build: local store only */</script>\n` +
   `<script src="${THREE_CDN}"></script>`);
 body = body.replace(/<script src="(src\/[^"]+)"><\/script>/g, (_, src) => {
   const code = readFileSync(join(root, src), "utf8");
