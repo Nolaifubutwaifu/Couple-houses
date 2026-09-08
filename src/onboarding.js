@@ -441,7 +441,10 @@ const Onboard = {
         <button class="btn sm" id="ob-copy">Copy code</button>
         <button class="btn sm" id="ob-new">New code</button>
       </div>
-      <p class="s dim">Single use, and it expires in seven days.</p></div>`);
+      <p class="s dim">Single use, and it expires in seven days.</p>
+      ${Api.backend ? `` : `<p class="ob-sim">This build stores your nest on this device only,
+        so the code works between tabs here and nowhere else. Pairing two phones needs
+        the server switched on.</p>`}</div>`);
     s.querySelector("#ob-share").onclick = async () => {
       const text = "I started a nest for us. Join me here: " + link;
       let channel = "share_sheet";
@@ -497,7 +500,10 @@ const Onboard = {
       const msg = {
         code_expired:"That code has expired. Ask your partner to send a new one.",
         code_used:"That code has already been used. Ask your partner to send a new one.",
-        code_not_found:"We could not find that code. Check for typos?",
+        code_not_found: Api.backend
+          ? "We could not find that code. Check for typos?"
+          : "This build keeps everything on this device, so a code made on another "
+            + "phone or browser cannot be found here. The code is probably fine.",
         nest_full:"That nest is already full.",
         own_nest:"That is your own code. Send it to your partner instead.",
         already_in_nest:"You are already in a nest with " + (err.partner_name || "someone") + ".",
