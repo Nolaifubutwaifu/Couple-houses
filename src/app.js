@@ -59,6 +59,8 @@ const SEED_HOUSES = [
             ["stove","kitchen",1,1],["fridge","kitchen",4,1],["table","kitchen",3,4]] },
 ];
 
+const GAME_ICON = { ritual:"clock", duel:"heartst", memory:"cat" };
+
 /* ---- state ---- */
 let state = null;                 // the nest's game record
 let route = { tab:"home", view:null };
@@ -73,7 +75,8 @@ function newGame(nest){
     version:GAME_VERSION, nest_id:nest.id,
     wallet:{ coins:BALANCE.startingCoins, lifetimeEarned:0 },
     bond:0,
-    streak:{ count:0, lastCheckIn:null, day:null, a:false, b:false },
+    streak:{ count:0, lastCheckIn:null, day:null, a:false, b:false, aAns:null, bAns:null },
+    daily:{ day:null, duel:0, memory:0 },
     house:{ rooms, inventory:[], placed:[] },
     showcase:{ published:false, likesGiven:[], tagline:"" },
     stats:{ gamesPlayed:0, duelsPlayed:0, bestDuel:0 },
@@ -161,7 +164,6 @@ const App = {
 
 /* ---- money and scoring ---- */
 const save = () => App.saveGame();
-const today = () => new Date().toISOString().slice(0, 10);
 const uid = () => Math.random().toString(36).slice(2, 10);
 /* Spec section 5: a solo user earns nothing and places nothing. The guard is
    here as well as structural, so a future screen cannot route around it. */
@@ -243,17 +245,17 @@ function go(tab, view){
 /* ---- screens ---- */
 function screenHome(root){
   const st = currentDomeState(), s = SEASON_STATES[st], season = seasonNow();
-  rollCheckinDay();
+  rollDay();
   const done = state.streak.lastCheckIn === today();
   root.appendChild(el(`<div class="card">
     <div class="spread"><div><p class="h">${s.label}${st === "resting" ? "" : " weather"}</p>
     <p class="s dim">${s.note} ${season.label} outside.</p></div>
     <span class="chip warm">${currentStreak()} day streak</span></div></div>`));
   if(!done){
-    const c = el(`<div class="card"><div class="spread"><div><p class="h">Today is unclaimed</p>
-      <p class="s dim">Both of you tap in and the light shifts.</p></div>
-      <button class="btn sm">Check in</button></div></div>`);
-    c.querySelector("button").onclick = () => go("play", { game:"checkin" });
+    const c = el(`<div class="card"><div class="spread"><div><p class="h">Today's question is waiting</p>
+      <p class="s dim">Both of you answer and the light shifts.</p></div>
+      <button class="btn sm">Answer</button></div></div>`);
+    c.querySelector("button").onclick = () => go("play", { game:"ritual" });
     root.appendChild(c);
   }
   root.appendChild(el(`<div class="stats">
@@ -261,7 +263,7 @@ function screenHome(root){
     <div class="stat"><b>${state.bond}</b><span>bond</span></div>\n    <div class="stat"><b>${charmOf(state.house.placed)}</b><span>charm</span></div>
     <div class="stat"><b>${daysTogether(state.couple.togetherSince).toLocaleString()}</b><span>days</span></div></div>`));
   Object.values(GAMES).forEach(g => {
-    const b = el(`<button class="row"><img src="${Offscreen.icon(g.id === "checkin" ? "clock" : g.id === "duel" ? "heartst" : "cat", 96)}" alt="">
+    const b = el(`<button class="row"><img src="${Offscreen.icon(GAME_ICON[g.id], 96)}" alt="">
       <div><p class="h">${g.title}</p><p class="s dim">${esc(g.blurb)}</p></div></button>`);
     b.onclick = () => { activeGame = null; go("play", { game:g.id }); };
     root.appendChild(b);
@@ -278,8 +280,9 @@ function screenPlay(root){
     return;
   }
   Object.values(GAMES).forEach(g => {
-    const b = el(`<button class="row"><img src="${Offscreen.icon(g.id === "checkin" ? "clock" : g.id === "duel" ? "heartst" : "cat", 96)}" alt="">
-      <div><p class="h">${g.title}</p><p class="s dim">${esc(g.blurb)}</p></div></button>`);
+    const b = el(`<button class="row"><img src="${Offscreen.icon(GAME_ICON[g.id], 96)}" alt="">
+      <div><p class="h">${g.title}</p><p class="s dim">${esc(g.blurb)}</p>
+      <p class="s dim"><b>${esc(capNote(g.id))}</b></p></div></button>`);
     b.onclick = () => { activeGame = null; go("play", { game:g.id }); };
     root.appendChild(b);
   });

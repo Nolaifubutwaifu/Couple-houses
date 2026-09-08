@@ -59,12 +59,20 @@ function shapeHash(mask, to){
     if(y < minY) minY = y; if(y > maxY) maxY = y;
   }
   if(maxX < 0) return new Array(to * to).fill(0);
-  const w = maxX - minX + 1, h = maxY - minY + 1, out = [];
+  // Letterbox rather than stretch. Squashing the crop to a square throws away
+  // proportion, and proportion is most of what makes a silhouette readable:
+  // a flat rug and a tall wardrobe are both solid rectangles once stretched.
+  const w = maxX - minX + 1, h = maxY - minY + 1;
+  const side = Math.max(w, h), padX = (side - w) / 2, padY = (side - h) / 2;
+  const out = [];
   for(let j = 0; j < to; j++) for(let i = 0; i < to; i++){
     let on = 0, count = 0;
-    for(let dy = 0; dy < h / to; dy++) for(let dx = 0; dx < w / to; dx++){
-      const sx = minX + Math.floor(i * w / to + dx), sy = minY + Math.floor(j * h / to + dy);
-      on += mask.bits[sy * n + sx]; count++;
+    const step = side / to;
+    for(let dy = 0; dy < step; dy++) for(let dx = 0; dx < step; dx++){
+      const fx = i * step + dx - padX, fy = j * step + dy - padY;
+      count++;
+      if(fx < 0 || fy < 0 || fx >= w || fy >= h) continue;
+      on += mask.bits[(minY + Math.floor(fy)) * n + (minX + Math.floor(fx))];
     }
     out.push(on > count / 3 ? 1 : 0);
   }

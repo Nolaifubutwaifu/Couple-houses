@@ -163,7 +163,7 @@ footer strong{color:var(--ink); font-weight:600}
 
 <div class="wrap">
 <header>
-  <p class="eyebrow">Build assessment · 4 September 2026</p>
+  <p class="eyebrow">Build assessment · 4 September 2026 · gap one now addressed</p>
   <h1>What stands between NEST and the App Store</h1>
   <p class="standfirst">Four sessions in, NEST has a validated look, an unusually complete
   onboarding flow, and an art bible enforced in code. What it does not have is a game, a
@@ -182,11 +182,12 @@ footer strong{color:var(--ink); font-weight:600}
 
   <dl class="facts">
     <dt>Codebase</dt><dd>4,179 lines across 8 files</dd>
-    <dt>Content</dt><dd>32 props, 4 rooms, 39 questions</dd>
-    <dt>Time to finish the game</dt><dd>40 minutes, or day 33</dd>
+    <dt>Content</dt><dd>49 props, 6 rooms, 100 questions</dd>
+    <dt>Time to finish the game</dt><dd>about six months</dd>
     <dt>Onboarding vs gameplay</dt><dd>17 screens vs 3</dd>
     <dt>Backend</dt><dd>none, localStorage only</dd>
     <dt>Store blockers found</dt><dd>2 automatic rejections</dd>
+    <dt>Lot triangles</dt><dd>96,142 of a 100,000 budget</dd>
   </dl>
 </header>
 
@@ -197,40 +198,49 @@ footer strong{color:var(--ink); font-weight:600}
   worth building.</p>
 
   <div class="find">
-    <span class="tag uncapped">Uncapped economy</span>
-    <h3>The whole game can be finished in forty minutes</h3>
+    <span class="tag done">Fixed since this audit</span>
+    <h3>The whole game could be finished in forty minutes</h3>
     <p>There is no cooldown, no daily cap and no rate limit anywhere in the codebase. A
     trivia duel pays 120 coins for about thirty seconds of tapping, and you can play it
     again immediately. Seventy nine rounds buys every item and every room.</p>
     <p>This is fatal to the premise rather than merely unbalanced. The entire pitch is
     that the home records months of showing up. An economy you can exhaust in an afternoon
     records nothing.</p>
-    <div class="evidence">catalogue 6,610 coins + room unlocks 2,800 = <b>9,410 total</b>
-duel 120 coins/round, uncapped  →  79 rounds  ≈  <b>40 minutes</b>
-grep for cooldown|dailyLimit|rate limit across src/  →  <b>0 matches</b></div>
+    <p>Now capped. The ritual, the duel and memory each have a daily limit, the
+    ceiling is 242 coins on a perfect day, and the catalogue grew to 49 props and
+    six rooms worth 49,480 coins. Six months of engaged play earns about 36,000,
+    which is every room and roughly 41 of the 49 props.</p>
+    <div class="evidence">was  catalogue 9,410 · duel uncapped · 79 rounds ≈ <b>40 minutes</b>
+now  catalogue 49,480 · ritual 1/day, duel 1/day, memory 2/day
+     ceiling <b>242 coins a day</b>, no way to exceed it</div>
   </div>
 
   <div class="find">
-    <span class="tag uncapped">No long game</span>
-    <h3>Played honestly, it still runs out on day 33</h3>
-    <p>Modelling one check in, one duel and one memory round per day, with the streak
-    bonus building as designed, the last item is bought on day 33. After that the daily
-    ritual pays a currency with nothing left to spend it on.</p>
-    <div class="evidence">day 1 &nbsp;320 coins · day 20 streak bonus caps at 100/day
-day 33 &nbsp;<b>9,410 reached, catalogue exhausted</b>
-day 34+ &nbsp;coins accumulate against an empty shop</div>
+    <span class="tag done">Fixed since this audit</span>
+    <h3>Played honestly, it used to run out on day 33</h3>
+    <p>The curve now stretches to roughly six months for a couple who shows up daily,
+    and the catalogue deliberately outlasts that so what you own is a choice.</p>
+    <div class="evidence">day  30 &nbsp;5,750 coins earned
+day  90 &nbsp;17,870
+day 180 &nbsp;<b>36,050 of a 49,480 catalogue, about 73%</b></div>
   </div>
 
   <div class="find">
-    <span class="tag thin">Thin content</span>
-    <h3>The house is two thirds empty at one hundred percent completion</h3>
-    <p>Thirty two props occupy 138 of the 360 available tiles. A couple who has bought
-    literally everything is looking at a mostly bare home, which is the opposite of the
-    feeling the art bible is chasing. The question banks are thinner still: six duel
-    rounds before questions repeat, and three ritual questions total.</p>
-    <div class="evidence">tiles available <b>360</b> · tiles the full catalogue fills <b>138</b>
-duel questions <b>36</b> at 6 per round  →  6 rounds before repeats
-ritual questions <b>3</b></div>
+    <span class="tag thin">Partly fixed, and I had this wrong</span>
+    <h3>Every couple ends up with the same house</h3>
+    <p>My first pass called this emptiness: 32 props filling 138 of 360 tiles. The
+    arithmetic was right and the reading was wrong. Thirty eight percent footprint
+    coverage is roughly what a genuinely furnished room looks like, so the house was
+    never bare.</p>
+    <p>The real problem was sameness. With a catalogue anyone could afford entirely,
+    every home on the street was identical, which quietly destroys the showcase. The fix
+    is not more props to fill space, it is a catalogue bigger than what the curve buys.
+    Now at 49 props with eight left unbought at six months. Honest assessment: eight is
+    a start, and real variety wants two or three times this catalogue. That is content
+    production, and it stays the long pole.</p>
+    <div class="evidence">props <b>32 → 49</b> · rooms <b>4 → 6</b>
+duel questions <b>36 → 60</b> · ritual questions <b>3 → 40</b>
+unbought at six months  <b>8 of 49</b></div>
   </div>
 
   <div class="find">
@@ -385,13 +395,14 @@ settings actions available  →  <b>1</b> (leave nest)</div>
 
   <ol class="plan">
     <li>
-      <h3>Cap the economy and deepen the content</h3>
-      <p>Daily limits on the paying games, a curve that stretches to months rather than
-      weeks, and enough props and questions that the shop is not empty on day 33. This
-      can be done inside the prototype now, and it is the only way to find out whether
-      there is a game here before spending real money on a client.</p>
-      <span class="why"><b>Why first:</b> cheapest step, and it answers the question that
-      makes every later step worth funding.</span>
+      <h3>Cap the economy and deepen the content <span class="tag done" style="vertical-align:middle;margin:0 0 0 6px">Done</span></h3>
+      <p>Daily limits on all three games, a curve that runs about six months, two more
+      rooms, 17 more props and a daily ritual that asks a real question instead of
+      offering a tick box. The catalogue now outlasts the curve on purpose.</p>
+      <span class="why"><b>What it revealed:</b> a fully furnished six room home renders
+      at 96,142 triangles against the bible's 100,000 lot budget. At this catalogue size
+      the budget and the room count are in tension, and the real build will want
+      instancing or another pass at the bevel segments.</span>
     </li>
     <li>
       <h3>Decide the breakup, the deletion and the joint data policy</h3>
@@ -402,13 +413,18 @@ settings actions available  →  <b>1</b> (leave nest)</div>
     </li>
     <li>
       <h3>Pick the client platform and prove one scene on a real phone</h3>
-      <p>Unity with URP as the bible specifies, or React Native carrying the existing
-      three.js scene. Before committing, build one furnished dome and measure it on a
-      three year old Android, because sixty frames a second on that device is the
-      constraint the whole art direction was written against and it has never been tested.</p>
+      <p>Unity is not necessary for what NEST is today. The 3D is 35 percent of the code
+      and asks nothing of an engine: no shadows, no physics, no skinned animation,
+      orthographic and static. What eventually forces Unity is the bible's own section 12,
+      which makes two animated avatars required by version 1.0.</p>
+      <p>The JavaScript route is not free either: react-three-fiber currently depends on
+      an older expo-gl than the Expo SDK ships, which works in the web build and breaks on
+      real devices. A WebView wrapper risks Guideline 4.2. Both long poles, asset
+      production and proving retention, are engine independent, so the decision can wait
+      and should.</p>
       <span class="why"><b>Why here:</b> the answer changes the cost of everything after
       it, and the current frame rate numbers come from software rendering and are
-      meaningless.</span>
+      meaningless until measured on a real device.</span>
     </li>
     <li>
       <h3>Build the service the endpoints already describe</h3>

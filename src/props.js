@@ -133,14 +133,14 @@ function artFrame(w, h, frameColour, panelColour){
    so the economy transfers untouched. cls drives the triangle budget. ---- */
 const CATALOGUE = [
   /* LIVING */
-  { id:"sofa", name:"Sofa", price:130, charm:8, w:4, h:2, room:"living", cls:"large", build(g){
+  { id:"sofa", name:"Sofa", price:410, charm:8, w:4, h:2, room:"living", cls:"large", build(g){
       g.add(box(2.0, 0.34, 0.95, "oat", 0, 0.28, 0, { fabric:true }));
       g.add(box(2.0, 0.52, 0.24, "oat", 0, 0.62, -0.36, { fabric:true }));
       [-0.88, 0.88].forEach(x => g.add(box(0.22, 0.46, 0.95, "oat", x, 0.28, 0, { fabric:true })));
       [-0.5, 0.5].forEach(x => g.add(box(0.34, 0.1, 0.3, "coral", x, 0.62, -0.2, { rx:-0.5, fabric:true })));
       legs(g, 2.0, 0.95, 0.28, "cocoa");
     } },
-  { id:"tv", name:"Big TV", price:170, charm:7, w:3, h:1, room:"living", cls:"medium", build(g){
+  { id:"tv", name:"Big TV", price:530, charm:7, w:3, h:1, room:"living", cls:"medium", build(g){
       g.add(box(1.4, 0.5, 0.36, "warmSand", 0, 0, 0));
       g.add(box(1.32, 0.78, 0.08, "ink", 0, 0.5, -0.1));
       g.add(box(1.2, 0.66, 0.03, "mist", 0, 0.56, -0.05));
@@ -149,13 +149,13 @@ const CATALOGUE = [
       [-0.5, 0.5].forEach(x => g.add(box(0.26, 0.2, 0.22, "oat", x, 0.06, 0.06)));
       g.add(box(1.36, 0.05, 0.4, "cocoa", 0, 0.5, 0));
     } },
-  { id:"armchair", name:"Armchair", price:70, charm:4, w:2, h:2, room:"living", cls:"medium", build(g){
+  { id:"armchair", name:"Armchair", price:220, charm:4, w:2, h:2, room:"living", cls:"medium", build(g){
       g.add(box(0.72, 0.3, 0.72, "blush", 0, 0.3, 0, { fabric:true }));
       g.add(box(0.72, 0.5, 0.2, "blush", 0, 0.6, -0.26, { fabric:true }));
       [-0.3, 0.3].forEach(x => g.add(box(0.14, 0.4, 0.72, "blush", x, 0.3, 0, { fabric:true })));
       legs(g, 0.72, 0.72, 0.3, "cocoa", 0.07);
     } },
-  { id:"books", name:"Bookshelf", price:110, charm:6, w:2, h:1, room:"living", cls:"large", build(g){
+  { id:"books", name:"Bookshelf", price:350, charm:6, w:2, h:1, room:"living", cls:"large", build(g){
       [-0.41, 0.41].forEach(x => g.add(box(0.08, 1.42, 0.32, "cocoa", x, 0, 0)));
       [0, 0.4, 0.8, 1.2].forEach(y => g.add(box(0.9, 0.06, 0.32, "cocoa", 0, y, 0)));
       g.add(box(1.06, 0.1, 0.4, "cocoa", 0, 1.42, 0));           // cornice breaks the box
@@ -167,18 +167,18 @@ const CATALOGUE = [
       });
       [0, 1, 2].forEach(i => g.add(box(0.14, 0.34, 0.2, ["butter","blush","sage"][i], -0.2 + i * 0.17, 1.26, 0.03, { rz:0.3 - i * 0.24 })));
     } },
-  { id:"plant", name:"Fiddle Fig", price:60, charm:4, w:1, h:1, room:"living", cls:"medium", build(g){
+  { id:"plant", name:"Fiddle Fig", price:190, charm:4, w:1, h:1, room:"living", cls:"medium", build(g){
       pottedPlant(g, 0, 0, "peach", "sage", 1.5, 7);
       g.add(cyl(0.04, 0.05, 0.55, "cocoa", 0, 0.3, 0, 8));
       g.add(box(0.24, 0.3, 0.06, "sage", 0.1, 0.72, 0.06, { rz:-0.5, sway:0.06 }));
     } },
-  { id:"guitar", name:"Guitar", price:150, charm:7, w:1, h:1, room:"living", cls:"medium", build(g){
+  { id:"guitar", name:"Guitar", price:470, charm:7, w:1, h:1, room:"living", cls:"medium", build(g){
       g.add(box(0.4, 0.5, 0.13, "marigold", 0, 0.1, 0, { rz:0.12 }));
       g.add(box(0.26, 0.3, 0.13, "marigold", -0.03, 0.52, 0, { rz:0.12 }));
       g.add(box(0.09, 0.7, 0.07, "cocoa", -0.12, 0.72, 0, { rz:0.12 }));
       g.add(box(0.13, 0.16, 0.05, "ink", -0.2, 1.4, 0, { rz:0.12 }));
     } },
-  { id:"console", name:"Game Corner", price:190, charm:9, w:2, h:1, room:"living", cls:"large", build(g){
+  { id:"console", name:"Game Corner", price:590, charm:9, w:2, h:1, room:"living", cls:"large", build(g){
       g.add(box(0.86, 0.09, 0.4, "warmSand", 0, 0.28, 0));
       g.add(box(0.86, 0.09, 0.4, "warmSand", 0, 0, 0));
       [-0.38, 0.38].forEach(x => g.add(box(0.09, 0.37, 0.36, "warmSand", x, 0, 0)));
@@ -189,7 +189,7 @@ const CATALOGUE = [
       g.add(box(0.22, 0.1, 0.15, "deepTeal", -0.26, 0.37, 0.06, { rz:0.2 }));
       g.add(box(0.22, 0.1, 0.15, "mist", 0.26, 0.37, 0.06, { rz:-0.2 }));
     } },
-  { id:"fireplc", name:"Fireplace", price:320, charm:14, w:3, h:2, room:"living", cls:"large", build(g){
+  { id:"fireplc", name:"Fireplace", price:1000, charm:14, w:3, h:2, room:"living", cls:"large", build(g){
       g.add(box(1.5, 1.15, 0.5, "softClay", 0, 0, 0));
       g.add(box(1.0, 0.62, 0.24, "ink", 0, 0.14, 0.16));
       g.add(box(1.66, 0.14, 0.62, "warmSand", 0, 1.15, 0));
@@ -200,7 +200,7 @@ const CATALOGUE = [
     } },
 
   /* KITCHEN */
-  { id:"fridge", name:"Fridge", price:200, charm:7, w:2, h:2, room:"kitchen", cls:"medium", build(g){
+  { id:"fridge", name:"Fridge", price:620, charm:7, w:2, h:2, room:"kitchen", cls:"medium", build(g){
       g.add(box(0.8, 1.14, 0.72, "cream", 0, 0, 0));
       g.add(box(0.66, 0.5, 0.62, "cream", -0.07, 1.14, 0));       // stepped freezer on top
       g.add(box(0.72, 0.1, 0.68, "mist", -0.07, 1.64, 0));
@@ -208,7 +208,7 @@ const CATALOGUE = [
       g.add(box(0.1, 0.3, 0.09, "cocoa", 0.33, 1.24, 0.28));
       g.add(box(0.78, 0.03, 0.02, "warmSand", 0, 1.12, 0.37));
     } },
-  { id:"stove", name:"Stove", price:180, charm:7, w:2, h:2, room:"kitchen", cls:"medium", build(g){
+  { id:"stove", name:"Stove", price:560, charm:7, w:2, h:2, room:"kitchen", cls:"medium", build(g){
       g.add(box(0.86, 0.9, 0.72, "oat", 0, 0, 0));
       g.add(box(0.86, 0.06, 0.72, "ink", 0, 0.9, 0));
       [[-0.2,-0.16],[0.2,-0.16],[-0.2,0.18],[0.2,0.18]].forEach(([x, z]) => g.add(cyl(0.11, 0.11, 0.03, "cocoa", x, 0.96, z)));
@@ -218,7 +218,7 @@ const CATALOGUE = [
       g.add(box(0.92, 0.26, 0.5, "oat", 0, 1.88, -0.16, { rx:0.18 }));  // hood flares out
       g.add(box(0.8, 0.06, 0.4, "cream", 0, 1.82, -0.16));
     } },
-  { id:"table", name:"Dining Table", price:240, charm:11, w:4, h:3, room:"kitchen", cls:"large", build(g){
+  { id:"table", name:"Dining Table", price:740, charm:11, w:4, h:3, room:"kitchen", cls:"large", build(g){
       g.add(box(1.7, 0.1, 1.0, "cocoa", 0, 0.74, 0));
       legs(g, 1.6, 0.9, 0.74, "cocoa", 0.1);
       [[-0.55, 0.62],[0.55, -0.62]].forEach(([x, z]) => {
@@ -228,14 +228,14 @@ const CATALOGUE = [
       });
       g.add(cyl(0.11, 0.09, 0.16, "deepTeal", 0, 0.84, 0));
     } },
-  { id:"coffee", name:"Coffee Bar", price:150, charm:8, w:2, h:1, room:"kitchen", cls:"medium", build(g){
+  { id:"coffee", name:"Coffee Bar", price:470, charm:8, w:2, h:1, room:"kitchen", cls:"medium", build(g){
       g.add(box(0.8, 0.92, 0.45, "warmSand", 0, 0, 0));
       g.add(box(0.86, 0.08, 0.5, "cream", 0, 0.92, 0));
       g.add(box(0.34, 0.44, 0.3, "deepTeal", -0.16, 1.0, 0));
       g.add(box(0.2, 0.06, 0.2, "cream", -0.16, 1.16, 0.16));
       [0.16, 0.3].forEach((x, i) => g.add(cyl(0.06, 0.05, 0.09, "blush", x + i * 0.02, 1.0, -0.08)));
     } },
-  { id:"wine", name:"Wine Rack", price:210, charm:9, w:1, h:2, room:"kitchen", cls:"medium", build(g){
+  { id:"wine", name:"Wine Rack", price:660, charm:9, w:1, h:2, room:"kitchen", cls:"medium", build(g){
       [-0.24, 0.24].forEach(x => g.add(box(0.07, 1.16, 0.36, "cocoa", x, 0, 0)));
       [0, 0.56, 1.12].forEach(y => g.add(box(0.55, 0.07, 0.36, "cocoa", 0, y, 0)));
       [[-1, 0.06],[1, 0.06]].forEach(([d, y]) =>                 // crossed braces break the outline
@@ -245,20 +245,20 @@ const CATALOGUE = [
       });
       for(let i = 0; i < 2; i++) g.add(cyl(0.05, 0.05, 0.42, "plum", -0.1 + i * 0.2, 1.19, 0.02, 8));
     } },
-  { id:"bake", name:"Cake Stand", price:90, charm:5, w:1, h:1, room:"kitchen", cls:"small", build(g){
+  { id:"bake", name:"Cake Stand", price:280, charm:5, w:1, h:1, room:"kitchen", cls:"small", build(g){
       g.add(cyl(0.06, 0.14, 0.12, "cream", 0, 0, 0));
       g.add(cyl(0.24, 0.24, 0.04, "cream", 0, 0.12, 0));
       g.add(cyl(0.17, 0.19, 0.16, "blush", 0, 0.16, 0));
       g.add(ball(0.035, "coral", 0, 0.35, 0));
     } },
-  { id:"herbs", name:"Herb Shelf", price:70, charm:4, w:2, h:1, room:"kitchen", cls:"medium", build(g){
+  { id:"herbs", name:"Herb Shelf", price:220, charm:4, w:2, h:1, room:"kitchen", cls:"medium", build(g){
       g.add(box(0.9, 0.06, 0.24, "cocoa", 0, 0.9, 0));
       [-0.24, 0.24].forEach(x => pottedPlant(g, x, 0, "peach", "sage", 0.65, 3));
       g.children.forEach(c => { if(c.position.y < 0.9) c.position.y += 0.96; });
     } },
 
   /* BEDROOM */
-  { id:"bed", name:"Double Bed", price:280, charm:13, w:3, h:4, room:"bedroom", cls:"large", build(g){
+  { id:"bed", name:"Double Bed", price:880, charm:13, w:3, h:4, room:"bedroom", cls:"large", build(g){
       g.add(box(1.45, 0.3, 1.95, "cocoa", 0, 0.16, 0));
       g.add(box(1.4, 0.24, 1.9, "cream", 0, 0.46, 0, { fabric:true }));
       g.add(box(1.4, 0.1, 1.15, "lilac", 0, 0.7, 0.34, { fabric:true }));
@@ -268,7 +268,7 @@ const CATALOGUE = [
       [-0.68, 0.68].forEach(x => g.add(ball(0.08, "cocoa", x, 1.72, -1.0, 10)));
       legs(g, 1.4, 1.9, 0.16, "cocoa", 0.09);
     } },
-  { id:"mirror", name:"Tall Mirror", price:120, charm:6, w:1, h:1, room:"bedroom", cls:"medium", build(g){
+  { id:"mirror", name:"Tall Mirror", price:370, charm:6, w:1, h:1, room:"bedroom", cls:"medium", build(g){
       // a cheval mirror: two posts, a tilted oval, an outline nothing else has
       [-0.32, 0.32].forEach(x => g.add(box(0.07, 1.32, 0.09, "cocoa", x, 0.06, 0)));
       g.add(box(0.72, 0.07, 0.3, "cocoa", 0, 0, 0));
@@ -281,12 +281,12 @@ const CATALOGUE = [
       glass.rotation.x = Math.PI / 2 - 0.16;
       g.add(glass);
     } },
-  { id:"lamp", name:"Warm Lamp", price:60, charm:4, w:1, h:1, room:"bedroom", cls:"small", build(g){
+  { id:"lamp", name:"Warm Lamp", price:190, charm:4, w:1, h:1, room:"bedroom", cls:"small", build(g){
       g.add(cyl(0.14, 0.18, 0.05, "cocoa", 0, 0, 0));
       g.add(cyl(0.03, 0.03, 0.9, "cocoa", 0, 0.05, 0, 8));
       g.add(cyl(0.24, 0.17, 0.32, "butter", 0, 0.9, 0));
     } },
-  { id:"wardrobe", name:"Wardrobe", price:190, charm:7, w:2, h:1, room:"bedroom", cls:"large", build(g){
+  { id:"wardrobe", name:"Wardrobe", price:590, charm:7, w:2, h:1, room:"bedroom", cls:"large", build(g){
       g.add(box(1.1, 1.78, 0.6, "warmSand", 0, 0.12, 0));
       [-0.27, 0.27].forEach(x => g.add(box(0.5, 1.62, 0.03, "oat", x, 0.2, 0.3)));
       [-0.27, 0.27].forEach(x => [0.45, 1.15].forEach(y => g.add(box(0.36, 0.5, 0.02, "warmSand", x, y, 0.33))));
@@ -295,7 +295,7 @@ const CATALOGUE = [
       g.add(box(1.16, 0.1, 0.66, "softClay", 0, 1.9, 0));
       g.add(box(1.24, 0.09, 0.72, "cocoa", 0, 2.0, 0));
     } },
-  { id:"clock", name:"Old Clock", price:140, charm:7, w:1, h:1, room:"bedroom", cls:"medium", build(g){
+  { id:"clock", name:"Old Clock", price:430, charm:7, w:1, h:1, room:"bedroom", cls:"medium", build(g){
       g.add(box(0.36, 1.45, 0.28, "cocoa", 0, 0, 0));
       g.add(box(0.5, 0.1, 0.34, "cocoa", 0, 1.45, 0));
       g.add(box(0.26, 0.16, 0.24, "cocoa", 0, 1.55, 0, { rz:0.0 }));
@@ -303,7 +303,7 @@ const CATALOGUE = [
       g.add(box(0.02, 0.09, 0.02, "ink", 0, 1.38, 0.18));
       g.add(box(0.09, 0.5, 0.03, "butter", 0, 0.5, 0.14, { sway:0.08 }));
     } },
-  { id:"flowers", name:"Fresh Flowers", price:80, charm:6, w:1, h:1, room:"bedroom", cls:"small", build(g){
+  { id:"flowers", name:"Fresh Flowers", price:250, charm:6, w:1, h:1, room:"bedroom", cls:"small", build(g){
       g.add(cyl(0.09, 0.11, 0.24, "mist", 0, 0, 0));
       [["blush",0],["coral",1],["butter",2],["lilac",3],["blush",4]].forEach(([c, i]) => {
         const a = (i / 5) * Math.PI * 2;
@@ -311,7 +311,7 @@ const CATALOGUE = [
         g.add(ball(0.06, c, Math.cos(a) * 0.09, 0.53, Math.sin(a) * 0.09, 8));
       });
     } },
-  { id:"cat", name:"Sleepy Cat", price:260, charm:12, w:1, h:1, room:"bedroom", cls:"medium", build(g){
+  { id:"cat", name:"Sleepy Cat", price:820, charm:12, w:1, h:1, room:"bedroom", cls:"medium", build(g){
       g.add(cyl(0.3, 0.32, 0.12, "blush", 0, 0, 0, 16));
       g.add(box(0.34, 0.18, 0.24, "softClay", 0, 0.12, 0, { fabric:true }));
       g.add(ball(0.11, "softClay", 0.1, 0.28, 0.06, 10));
@@ -320,7 +320,7 @@ const CATALOGUE = [
     } },
 
   /* GARDEN */
-  { id:"tree", name:"Old Tree", price:170, charm:9, w:3, h:3, room:"garden", cls:"medium", build(g){
+  { id:"tree", name:"Old Tree", price:530, charm:9, w:3, h:3, room:"garden", cls:"medium", build(g){
       g.add(cyl(0.13, 0.2, 1.15, "cocoa", 0, 0, 0, 10));
       g.add(ball(0.52, "sage", 0, 1.45, 0, 16));
       g.add(ball(0.36, "sage", 0.35, 1.2, 0.16, 14));
@@ -331,7 +331,7 @@ const CATALOGUE = [
         g.add(box(0.35, 0.07, 0.07, "cocoa", x, y, z, { rz:x > 0 ? -0.5 : 0.5 })));
       g.children.slice(1).forEach(c => { c.userData.sway = 0.03; });
     } },
-  { id:"tulips", name:"Tulip Bed", price:70, charm:5, w:2, h:2, room:"garden", cls:"medium", build(g){
+  { id:"tulips", name:"Tulip Bed", price:220, charm:5, w:2, h:2, room:"garden", cls:"medium", build(g){
       g.add(box(0.8, 0.14, 0.8, "cocoa", 0, 0, 0));
       for(let i = 0; i < 5; i++){
         const a = i * 1.9, r = 0.1 + (i % 3) * 0.11;
@@ -339,19 +339,19 @@ const CATALOGUE = [
         g.add(box(0.09, 0.13, 0.09, ["coral","blush","butter"][i % 3], Math.cos(a) * r, 0.38, Math.sin(a) * r, { sway:0.09 }));
       }
     } },
-  { id:"bench", name:"Two Seat Bench", price:130, charm:8, w:4, h:1, room:"garden", cls:"medium", build(g){
+  { id:"bench", name:"Two Seat Bench", price:410, charm:8, w:4, h:1, room:"garden", cls:"medium", build(g){
       g.add(box(1.5, 0.09, 0.46, "cocoa", 0, 0.44, 0));
       [0, 0.16, 0.32].forEach(y => g.add(box(1.5, 0.11, 0.06, "cocoa", 0, 0.56 + y, -0.2)));
       [-0.62, 0.62].forEach(x => { g.add(box(0.1, 0.44, 0.1, "softClay", x, 0, -0.16)); g.add(box(0.1, 0.44, 0.1, "softClay", x, 0, 0.16)); });
     } },
-  { id:"firepit", name:"Fire Pit", price:220, charm:11, w:2, h:2, room:"garden", cls:"medium", build(g){
+  { id:"firepit", name:"Fire Pit", price:680, charm:11, w:2, h:2, room:"garden", cls:"medium", build(g){
       g.add(cyl(0.42, 0.46, 0.3, "softClay", 0, 0, 0, 16));
       g.add(cyl(0.34, 0.34, 0.06, "ink", 0, 0.28, 0, 16));
       [[0, 0.34],[-0.12, 0.24],[0.13, 0.26]].forEach(([x, h]) =>
         g.add(box(0.16, h, 0.13, "coral", x, 0.3, 0, { sway:0.12 })));
       g.add(box(0.1, 0.16, 0.09, "coral", 0, 0.34, 0.02, { sway:0.16 }));
     } },
-  { id:"pool", name:"Plunge Pool", price:520, charm:20, w:6, h:4, room:"garden", cls:"large", build(g){
+  { id:"pool", name:"Plunge Pool", price:1620, charm:20, w:6, h:4, room:"garden", cls:"large", build(g){
       g.add(box(2.9, 0.34, 1.9, "cream", 0, 0, 0));
       g.add(box(2.6, 0.24, 1.6, "mist", 0, 0.06, 0));
       g.add(box(2.4, 0.03, 1.4, "deepTeal", 0, 0.3, 0, { sway:0.006 }));
@@ -360,13 +360,13 @@ const CATALOGUE = [
       [0.16, 0.34].forEach(y => g.add(box(0.5, 0.05, 0.05, "cream", 1.15, y, 0.98)));
       g.add(cyl(0.3, 0.3, 0.09, "butter", 1.7, 0, 0.7, 16));
     } },
-  { id:"dog", name:"Dog House", price:280, charm:12, w:2, h:2, room:"garden", cls:"medium", build(g){
+  { id:"dog", name:"Dog House", price:880, charm:12, w:2, h:2, room:"garden", cls:"medium", build(g){
       g.add(box(0.9, 0.62, 0.9, "warmSand", 0, 0, 0));
       g.add(box(0.72, 0.62, 0.1, "coral", 0, 0.62, 0, { rz:Math.PI / 4 }));
       g.add(box(0.72, 0.62, 0.1, "coral", 0, 0.62, 0, { rz:-Math.PI / 4 }));
       g.add(box(0.34, 0.42, 0.06, "cocoa", 0, 0.06, 0.45));
     } },
-  { id:"fountain", name:"Fountain", price:400, charm:17, w:3, h:3, room:"garden", cls:"large", build(g){
+  { id:"fountain", name:"Fountain", price:1250, charm:17, w:3, h:3, room:"garden", cls:"large", build(g){
       g.add(cyl(0.72, 0.78, 0.34, "cream", 0, 0, 0, 20));
       g.add(cyl(0.62, 0.62, 0.08, "mist", 0, 0.3, 0, 20));
       g.add(cyl(0.14, 0.2, 0.5, "cream", 0, 0.34, 0, 14));
@@ -382,7 +382,7 @@ const CATALOGUE = [
     } },
 
   /* MEMENTOS. Anywhere, and where the charm actually lives. */
-  { id:"photos", name:"Photo Wall", price:300, charm:22, w:2, h:1, room:"any", memento:true, cls:"medium", build(g){
+  { id:"photos", name:"Photo Wall", price:940, charm:22, w:2, h:1, room:"any", memento:true, cls:"medium", build(g){
       const spots = [[-0.3, 1.15, 0.34, 0.42],[0.12, 1.3, 0.28, 0.28],[0.3, 0.95, 0.34, 0.44]];
       const tints = ["blush","butter","mist"];
       spots.forEach(([x, y, w, h], i) => {
@@ -393,7 +393,7 @@ const CATALOGUE = [
       g.add(box(0.9, 0.06, 0.22, "cocoa", 0, 0.6, 0));
       g.add(ball(0.06, "coral", 0.3, 0.69, 0, 10));
     } },
-  { id:"heartst", name:"Heart Statue", price:450, charm:30, w:2, h:2, room:"any", memento:true, cls:"medium", build(g){
+  { id:"heartst", name:"Heart Statue", price:1400, charm:30, w:2, h:2, room:"any", memento:true, cls:"medium", build(g){
       g.add(cyl(0.3, 0.34, 0.3, "cream", 0, 0, 0, 18));
       g.add(cyl(0.22, 0.3, 0.14, "cream", 0, 0.3, 0, 18));
       g.add(box(0.42, 0.42, 0.2, "coral", 0, 0.62, 0, { rz:Math.PI / 4, centred:true }));
@@ -401,7 +401,7 @@ const CATALOGUE = [
       g.add(ball(0.21, "coral", 0.15, 0.77, 0, 16));
       g.children.slice(1).forEach(c => { c.userData.sway = 0.02; });
     } },
-  { id:"vows", name:"Framed Vows", price:600, charm:40, w:1, h:1, room:"any", memento:true, cls:"medium", build(g){
+  { id:"vows", name:"Framed Vows", price:1870, charm:40, w:1, h:1, room:"any", memento:true, cls:"medium", build(g){
       g.add(box(0.34, 0.2, 0.3, "warmSand", 0, 0, 0));
       const f = artFrame(0.52, 0.66, "marigold", "cream");
       f.position.set(0, 0.55, 0.02);
@@ -409,6 +409,220 @@ const CATALOGUE = [
       g.add(f);
       [0.1, 0.2, 0.3, 0.4].forEach((y, i) => g.add(box(0.3 - (i % 2) * 0.08, 0.025, 0.01, "softClay", 0, 0.36 + y * 0.55, 0.07)));
       g.add(ball(0.05, "marigold", 0.2, 0.24, 0.1, 10));
+    } },
+
+  /* ---- second wave. Every one of these was shaped to read differently as a
+     black silhouette, because with a catalogue this size the failure mode is
+     forty nine props that are all a box on legs. ---- */
+
+  /* LIVING */
+  { id:"piano", name:"Upright Piano", price:1680, charm:24, w:4, h:2, room:"living", cls:"large", build(g){
+      g.add(box(1.5, 1.15, 0.55, "cocoa", 0, 0.14, 0));
+      g.add(box(1.58, 0.09, 0.62, "cocoa", 0, 1.29, 0));
+      g.add(box(1.42, 0.14, 0.34, "cream", 0, 0.66, 0.42));      // the keyboard ledge steps out
+      for(let i = 0; i < 11; i++) g.add(box(0.1, 0.04, 0.26, "cream", -0.6 + i * 0.12, 0.8, 0.44));
+      for(let i = 0; i < 7; i++) g.add(box(0.05, 0.05, 0.16, "ink", -0.54 + i * 0.17, 0.84, 0.4));
+      [-0.62, 0.62].forEach(x => g.add(box(0.14, 0.14, 0.5, "cocoa", x, 0, 0)));
+      g.add(box(0.9, 0.36, 0.04, "warmSand", 0, 1.29, -0.1, { rx:-0.16 }));
+    } },
+  { id:"rug", name:"Big Rug", price:460, charm:9, w:4, h:3, room:"living", cls:"medium", build(g){
+      g.add(box(1.9, 0.035, 1.35, "blush", 0, 0, 0));
+      g.add(box(1.55, 0.02, 1.0, "cream", 0, 0.035, 0));
+      g.add(box(1.15, 0.015, 0.68, "blush", 0, 0.05, 0));
+      for(let i = 0; i < 6; i++){
+        g.add(box(0.07, 0.02, 0.12, "blush", -0.75 + i * 0.3, 0, 0.73));
+        g.add(box(0.07, 0.02, 0.12, "blush", -0.75 + i * 0.3, 0, -0.73));
+      }
+    } },
+
+  /* KITCHEN */
+  { id:"island", name:"Kitchen Island", price:1440, charm:20, w:4, h:3, room:"kitchen", cls:"large", build(g){
+      g.add(box(1.5, 0.86, 0.95, "warmSand", 0, 0, 0));
+      g.add(box(1.72, 0.1, 1.15, "cream", 0, 0.86, 0));           // the worktop overhangs
+      g.add(box(0.5, 0.03, 0.4, "deepTeal", -0.35, 0.96, 0));
+      [0.3, 0.58].forEach(y => g.add(box(1.3, 0.02, 0.02, "cocoa", 0, y, 0.48)));
+      [-0.3, 0.3].forEach(x => [0.36, 0.64].forEach(y => g.add(ball(0.035, "cocoa", x, y, 0.49, 8))));
+      g.add(cyl(0.16, 0.13, 0.09, "cream", 0.42, 0.96, 0.04, 16));
+      [[0.36, 0.02],[0.46, 0.06],[0.42, -0.05]].forEach(([x, z]) => g.add(ball(0.055, "blush", x, 1.08, z + 0.04, 10)));
+      g.add(box(0.22, 0.3, 0.03, "cream", -0.72, 0.5, 0.3, { rz:0.05 }));
+      [0.3, 0.58].forEach(y => g.add(box(1.3, 0.02, 0.02, "cocoa", 0, y, -0.48)));
+      [-0.3, 0.3].forEach(x => [0.36, 0.64].forEach(y => g.add(ball(0.035, "cocoa", x, y, -0.49, 8))));
+      [-0.45, 0.45].forEach(x => {                                 // two stools tucked under
+        g.add(cyl(0.16, 0.14, 0.06, "cocoa", x, 0.6, 0.72, 14));
+        g.add(cyl(0.04, 0.05, 0.6, "cocoa", x, 0, 0.72, 8));
+        g.add(cyl(0.14, 0.14, 0.03, "cocoa", x, 0.2, 0.72, 10));
+      });
+    } },
+  { id:"potrack", name:"Pot Rack", price:670, charm:11, w:3, h:1, room:"kitchen", cls:"medium", build(g){
+      [-0.55, 0.55].forEach(x => g.add(box(0.05, 0.5, 0.05, "cocoa", x, 1.42, 0)));
+      g.add(box(1.24, 0.07, 0.09, "cocoa", 0, 1.36, 0));           // a bar high up, nothing below it
+      const pots = [[-0.42, 0.2, "sage"], [-0.12, 0.26, "cream"], [0.18, 0.18, "peach"], [0.45, 0.24, "mist"]];
+      pots.forEach(([x, h, c]) => {
+        g.add(box(0.03, 0.12, 0.03, "cocoa", x, 1.24, 0));
+        g.add(cyl(0.13, 0.11, h, c, x, 1.24 - h, 0, 14));
+      });
+    } },
+
+  /* BEDROOM */
+  { id:"dresser", name:"Dresser", price:940, charm:14, w:3, h:1, room:"bedroom", cls:"large", build(g){
+      g.add(box(1.15, 0.7, 0.5, "warmSand", 0, 0.16, 0));
+      [0.3, 0.55].forEach(y => g.add(box(1.02, 0.02, 0.02, "cocoa", 0, y, 0.26)));
+      [-0.26, 0.26].forEach(x => [0.34, 0.6].forEach(y => g.add(ball(0.035, "cocoa", x, y, 0.27, 8))));
+      [-0.48, 0.48].forEach(x => { g.add(box(0.09, 0.16, 0.09, "cocoa", x, 0, -0.16, { rz:x > 0 ? -0.2 : 0.2 }));
+                                   g.add(box(0.09, 0.16, 0.09, "cocoa", x, 0, 0.16, { rz:x > 0 ? -0.2 : 0.2 })); });
+      g.add(box(1.2, 0.06, 0.55, "cocoa", 0, 0.86, 0));
+      const oval = new THREE.Group();                              // an oval mirror makes it a T, not a box
+      oval.add(cyl(0.3, 0.3, 0.05, "cocoa", 0, -0.025, 0, 20));
+      oval.add(cyl(0.25, 0.25, 0.03, "mist", 0, 0.01, 0.02, 20));
+      oval.scale.set(1, 1, 1.35);
+      oval.position.set(0, 1.28, -0.06);
+      oval.rotation.x = Math.PI / 2;
+      g.add(oval);
+      [-0.3, 0.3].forEach(x => g.add(box(0.05, 0.42, 0.05, "cocoa", x, 0.92, -0.06)));
+    } },
+  { id:"rocker", name:"Rocking Chair", price:770, charm:12, w:2, h:2, room:"bedroom", cls:"medium", build(g){
+      [-0.24, 0.24].forEach(x => {                                 // curved runners give it a rocking base
+        for(let i = 0; i < 5; i++){
+          const t = (i / 4) - 0.5;
+          g.add(box(0.16, 0.06, 0.11, "cocoa", x, Math.abs(t) * 0.16, t * 0.84, { rz:0 }));
+        }
+      });
+      g.add(box(0.62, 0.07, 0.6, "cocoa", 0, 0.42, 0));
+      g.add(box(0.62, 0.62, 0.07, "cocoa", 0, 0.49, -0.28, { rx:0.18 }));
+      [-0.28, 0.28].forEach(x => { g.add(box(0.07, 0.42, 0.07, "cocoa", x, 0, -0.26));
+                                   g.add(box(0.07, 0.42, 0.07, "cocoa", x, 0, 0.26)); });
+      g.add(box(0.5, 0.1, 0.34, "lilac", 0, 0.49, 0.02, { fabric:true }));
+    } },
+
+  /* STUDY */
+  { id:"desk", name:"Writing Desk", price:980, charm:15, w:4, h:2, room:"study", cls:"large", build(g){
+      g.add(box(1.6, 0.08, 0.75, "cocoa", 0, 0.72, 0));
+      g.add(box(0.62, 0.44, 0.6, "warmSand", -0.44, 0.28, 0));
+      [0.36, 0.56].forEach(y => g.add(box(0.5, 0.02, 0.02, "cocoa", -0.44, y, 0.31)));
+      legs(g, 1.5, 0.7, 0.72, "cocoa", 0.09);
+      g.add(box(1.5, 0.2, 0.05, "cocoa", 0, 0.5, -0.34));
+      g.add(box(0.34, 0.03, 0.26, "cream", 0.42, 0.8, 0.04, { rz:0.02 }));
+      g.add(cyl(0.06, 0.07, 0.14, "deepTeal", 0.16, 0.8, -0.18, 12));
+      [0, 1, 2].forEach(i => g.add(box(0.03, 0.16, 0.03, "blush", 0.14 + i * 0.04, 0.94, -0.18)));
+      g.add(box(0.26, 0.06, 0.2, "warmSand", -0.44, 0.8, 0.2));
+    } },
+  { id:"deskchair", name:"Desk Chair", price:500, charm:8, w:2, h:2, room:"study", cls:"medium", build(g){
+      for(let i = 0; i < 5; i++){                                  // a five star base on one column
+        const a = (i / 5) * Math.PI * 2;
+        g.add(box(0.32, 0.06, 0.08, "ink", Math.cos(a) * 0.17, 0.03, Math.sin(a) * 0.17, { ry:-a }));
+        g.add(cyl(0.045, 0.045, 0.07, "ink", Math.cos(a) * 0.31, 0, Math.sin(a) * 0.31, 8));
+      }
+      g.add(cyl(0.055, 0.07, 0.34, "ink", 0, 0.06, 0, 10));
+      g.add(box(0.5, 0.09, 0.48, "mist", 0, 0.4, 0, { fabric:true }));
+      g.add(box(0.46, 0.52, 0.08, "mist", 0, 0.49, -0.22, { rx:0.12, fabric:true }));
+    } },
+  { id:"bookwall", name:"Book Wall", price:1500, charm:22, w:3, h:1, room:"study", cls:"large", build(g){
+      [-0.62, 0.62].forEach(x => g.add(box(0.07, 2.1, 0.32, "cocoa", x, 0, 0)));
+      [0, 0.52, 1.04, 1.56, 2.1].forEach(y => g.add(box(1.32, 0.06, 0.32, "cocoa", 0, y, 0)));
+      const c = ["blush","sage","butter","mist","lilac","peach"];
+      for(let row = 0; row < 3; row++) for(let i = 0; i < 5; i++){
+        if((row + i) % 4 === 0) continue;
+        g.add(box(0.17, 0.36, 0.2, c[(i + row * 3) % 6], -0.44 + i * 0.22, 0.06 + row * 0.52, 0.03));
+      }
+      g.add(box(0.06, 1.9, 0.06, "cocoa", 0.44, 0.1, 0.28, { rz:-0.14 }));   // a leaning ladder
+      g.add(box(0.06, 1.9, 0.06, "cocoa", 0.74, 0.1, 0.28, { rz:-0.14 }));
+      for(let i = 0; i < 3; i++) g.add(box(0.34, 0.04, 0.05, "cocoa", 0.6 - i * 0.08, 0.4 + i * 0.55, 0.28));
+    } },
+  { id:"globe", name:"Globe", price:550, charm:9, w:1, h:1, room:"study", cls:"medium", build(g){
+      g.add(cyl(0.12, 0.18, 0.06, "cocoa", 0, 0, 0, 16));
+      g.add(cyl(0.03, 0.03, 0.28, "cocoa", 0, 0.06, 0, 8));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.022, 8, 24), mat("marigold"));
+      ring.position.set(0, 0.58, 0);
+      ring.rotation.y = 0.4;
+      g.add(ring);
+      g.add(ball(0.2, "mist", 0, 0.58, 0, 16));
+      [[0.06, 0.62, 0.14],[-0.08, 0.5, 0.16],[0.02, 0.68, -0.15]].forEach(([x, y, z]) =>
+        g.add(box(0.12, 0.08, 0.03, "sage", x, y, z)));
+    } },
+  { id:"telescope", name:"Telescope", price:1180, charm:18, w:2, h:2, room:"study", cls:"medium", build(g){
+      for(let i = 0; i < 3; i++){                                   // tripod plus an angled tube
+        const a = (i / 3) * Math.PI * 2;
+        g.add(box(0.06, 0.95, 0.06, "cocoa", Math.cos(a) * 0.19, 0, Math.sin(a) * 0.19,
+          { rz:-Math.cos(a) * 0.22, rx:Math.sin(a) * 0.22 }));
+      }
+      g.add(cyl(0.08, 0.09, 0.12, "cocoa", 0, 0.92, 0, 12));
+      for(let i = 0; i < 3; i++){                                   // tripod braces
+        const a = (i / 3) * Math.PI * 2;
+        g.add(box(0.2, 0.04, 0.04, "cocoa", Math.cos(a) * 0.11, 0.4, Math.sin(a) * 0.11, { ry:-a + Math.PI / 2 }));
+      }
+      const tube = new THREE.Group();
+      tube.add(cyl(0.1, 0.13, 0.86, "deepTeal", 0, -0.43, 0, 16));
+      tube.add(cyl(0.07, 0.07, 0.1, "cocoa", 0, 0.05, 0, 12));
+      tube.add(cyl(0.045, 0.05, 0.28, "cocoa", 0.13, -0.2, 0, 10));   // finder scope
+      tube.add(box(0.05, 0.16, 0.05, "cocoa", 0.13, -0.34, 0));
+      tube.position.set(0, 1.12, 0);
+      tube.rotation.x = -0.85;
+      g.add(tube);
+    } },
+
+  /* PORCH */
+  { id:"swingseat", name:"Porch Swing", price:1260, charm:19, w:4, h:1, room:"porch", cls:"large", build(g){
+      [-0.82, 0.82].forEach(x => {                                 // a frame with a bench hung inside it
+        g.add(box(0.11, 2.0, 0.11, "cocoa", x, 0, -0.2));
+        g.add(box(0.11, 2.0, 0.11, "cocoa", x, 0, 0.2));
+        g.add(box(0.11, 0.5, 0.5, "cocoa", x, 1.75, 0));
+      });
+      g.add(box(1.8, 0.12, 0.14, "cocoa", 0, 2.0, 0));
+      [-0.6, 0.6].forEach(x => [-0.22, 0.22].forEach(z =>
+        g.add(box(0.035, 0.98, 0.035, "cocoa", x, 0.92, z))));
+      g.add(box(1.35, 0.09, 0.5, "warmSand", 0, 0.84, 0));
+      g.add(box(1.35, 0.5, 0.08, "warmSand", 0, 0.93, -0.24, { rx:0.14 }));
+      g.add(box(0.36, 0.14, 0.3, "coral", -0.42, 0.93, 0.02, { fabric:true }));
+    } },
+  { id:"lantern", name:"Hanging Lantern", price:410, charm:7, w:1, h:1, room:"porch", cls:"small", build(g){
+      g.add(cyl(0.13, 0.17, 0.07, "cocoa", 0, 0, 0, 14));
+      g.add(cyl(0.04, 0.05, 1.5, "cocoa", 0, 0.07, 0, 10));
+      g.add(box(0.44, 0.05, 0.05, "cocoa", 0.2, 1.55, 0));          // an arm out to one side
+      g.add(box(0.24, 0.3, 0.24, "butter", 0.4, 1.13, 0));
+      g.add(box(0.3, 0.07, 0.3, "cocoa", 0.4, 1.43, 0));
+    } },
+  { id:"planter", name:"Planter Box", price:580, charm:10, w:3, h:1, room:"porch", cls:"large", build(g){
+      g.add(box(1.3, 0.34, 0.4, "cocoa", 0, 0.08, 0));
+      g.add(box(1.36, 0.07, 0.46, "cocoa", 0, 0.42, 0));
+      [-0.42, 0, 0.42].forEach(x => pottedPlant(g, x, 0, "warmSand", "sage", 0.7, 3));
+      g.children.forEach(c => { if(c.position.y < 0.4 && Math.abs(c.position.x) > 0.1) c.position.y += 0.49; });
+      [-0.58, 0.58].forEach(x => g.add(box(0.1, 0.16, 0.36, "cocoa", x, 0, 0)));
+    } },
+  { id:"doormat", name:"Welcome Mat", price:180, charm:4, w:2, h:1, room:"porch", cls:"medium", build(g){
+      g.add(box(0.72, 0.05, 0.44, "softClay", 0, 0, 0));
+      [-0.13, 0.13].forEach(x =>                                    // boots, so it is not a slab
+        g.add(box(0.16, 0.26, 0.3, "deepTeal", x, 0.06, 0.02)));
+    } },
+
+  /* GARDEN */
+  { id:"hammock", name:"Hammock", price:1060, charm:16, w:4, h:2, room:"garden", cls:"medium", build(g){
+      [-0.86, 0.86].forEach(x => {
+        g.add(cyl(0.07, 0.1, 1.15, "cocoa", x, 0, 0));
+        g.add(box(0.5, 0.09, 0.09, "cocoa", x + (x > 0 ? -0.2 : 0.2), 0.95, 0, { rz:x > 0 ? 0.5 : -0.5 }));
+      });
+      for(let i = 0; i < 11; i++){                                 // a real sag, which nothing else has
+        const t = (i / 10) - 0.5;
+        const y = 0.86 - Math.cos(t * Math.PI) * 0.34;
+        g.add(box(0.17, 0.06, 0.52, "butter", t * 1.6, y, 0, { rz:-t * 0.9, fabric:true }));
+      }
+      g.add(box(0.3, 0.1, 0.26, "cream", 0.42, 0.82, 0, { fabric:true }));
+    } },
+
+  /* MEMENTO */
+  { id:"ring", name:"The Ring", price:2880, charm:50, w:1, h:1, room:"any", memento:true, cls:"medium", build(g){
+      g.add(cyl(0.26, 0.3, 0.1, "cocoa", 0, 0, 0, 20));
+      g.add(cyl(0.24, 0.24, 0.04, "blush", 0, 0.1, 0, 18));
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.018, 8, 20), mat("marigold"));
+      band.position.set(0, 0.22, 0);
+      band.rotation.x = Math.PI / 2.6;
+      g.add(band);
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        new THREE.MeshToonMaterial({ color:PALETTE.mist, gradientMap:toonRamp(), transparent:true, opacity:0.42 })
+      );
+      dome.position.set(0, 0.12, 0);
+      g.add(dome);
+      g.add(cyl(0.03, 0.03, 0.04, "cocoa", 0, 0.4, 0, 8));
     } },
 ];
 function legs2(g, x, z, h){   // chair legs, thin set

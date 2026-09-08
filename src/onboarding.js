@@ -30,11 +30,6 @@ const TERRAIN_TYPES = [
   { id:"stone", name:"Stone", colour:"mist" },
   { id:"snow",  name:"Snow",  colour:"cream" },
 ];
-const RITUAL_QUESTIONS = [
-  { q:"What would make today better?", o:["A long walk","Something sweet","An early night","Ten quiet minutes"] },
-  { q:"Where should we go, if we could go anywhere?", o:["Somewhere warm","Somewhere quiet","Somewhere loud","Home, honestly"] },
-  { q:"What is the first thing we put in the nest?", o:["Somewhere to sit","Something green","A photo","A light"] },
-];
 const STARTER_ITEMS = ["plant", "armchair", "photos"];
 const NUDGES = [
   { at: 24 * 3600e3, copy:"Your nest is still waiting. Want to resend the invite?" },

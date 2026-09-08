@@ -6,9 +6,11 @@
 /* Section 5 layer 3. Rooms tile out across the lot, 0.5 unit tiles. */
 const ROOMS = [
   { id:"living",  name:"Living Room", ox:-5.1, oz:-4.1, w:10, h:8,  price:0,    accent:"coral"    },
-  { id:"kitchen", name:"Kitchen",     ox: 0.1, oz:-4.1, w:10, h:8,  price:500,  accent:"deepTeal" },
-  { id:"bedroom", name:"Bedroom",     ox:-5.1, oz: 0.1, w:10, h:8,  price:900,  accent:"plum"     },
-  { id:"garden",  name:"Garden",      ox: 0.1, oz: 0.1, w:12, h:10, price:1400, accent:"marigold" },
+  { id:"kitchen", name:"Kitchen",     ox: 0.1, oz:-4.1, w:10, h:8,  price:700,  accent:"deepTeal" },
+  { id:"bedroom", name:"Bedroom",     ox:-5.1, oz: 0.1, w:10, h:8,  price:1400, accent:"plum"     },
+  { id:"garden",  name:"Garden",      ox: 0.1, oz: 0.1, w:12, h:10, price:2200, accent:"marigold" },
+  { id:"study",   name:"Study",       ox:-5.1, oz: 4.3, w:10, h:6,  price:3200, accent:"deepTeal" },
+  { id:"porch",   name:"Porch",       ox: 0.1, oz: 5.3, w:12, h:4,  price:4300, accent:"marigold" },
 ];
 const ROOM_BY_ID = {};
 ROOMS.forEach(r => { ROOM_BY_ID[r.id] = r; });
@@ -37,6 +39,7 @@ function softDisc(colour){
   return new THREE.CanvasTexture(c);
 }
 
+const OUTDOOR = { garden:1, porch:1 };
 const BASE_COLOUR = { ceramic:"oat", sand:"warmSand", clay:"softClay", cream:"cream" };
 const TERRAIN_COLOUR = { grass:"sage", sand:"warmSand", stone:"mist", snow:"cream" };
 
@@ -288,10 +291,10 @@ const Diorama = {
     ROOMS.forEach(r => {
       if(!this.unlocked[r.id]) return;
       const W = r.w * TILE, H = r.h * TILE, cx = r.ox + W / 2, cz = r.oz + H / 2;
-      const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.1, H), mat(r.id === "garden" ? "sage" : "softClay"));
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.1, H), mat(OUTDOOR[r.id] ? "sage" : "softClay"));
       floor.position.set(cx, FLOOR_Y - 0.05, cz);
       this.home.add(floor);
-      if(r.id !== "garden"){
+      if(r.id !== "garden" && r.id !== "porch"){
         const inner = new THREE.Mesh(new THREE.BoxGeometry(W - 0.16, 0.02, H - 0.16), mat("oat"));
         inner.position.set(cx, FLOOR_Y + 0.006, cz);
         this.home.add(inner);
@@ -870,7 +873,7 @@ const Offscreen = {
       if(!used[r.id]) return;
       const floor = new THREE.Mesh(
         new THREE.BoxGeometry(r.w * TILE, 0.08, r.h * TILE),
-        mat(r.id === "garden" ? "sage" : "softClay"));
+        mat(OUTDOOR[r.id] ? "sage" : "softClay"));
       floor.position.set(r.ox + r.w * TILE / 2, 0.16, r.oz + r.h * TILE / 2);
       g.add(floor);
     });

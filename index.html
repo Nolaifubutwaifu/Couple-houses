@@ -129,6 +129,14 @@ img{display:block;max-width:100%}
   color:var(--teal);flex:none}
 .check[data-on="1"]{background:var(--sage)}
 
+.ritual{display:grid;gap:8px;margin-top:12px}
+.answered,.waiting{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--oat);border-radius:14px;padding:12px 14px;min-height:48px}
+.answered b,.waiting b{font-size:14px;flex:none}
+.answered span{font-size:14px;color:var(--cocoa);text-align:right}
+.answered{background:var(--sage)}
+.waiting .btn{flex:none}
+
 .bar{height:6px;background:var(--oat);border-radius:99px;overflow:hidden;margin:12px 0 2px}
 .bar i{display:block;height:100%;background:var(--coral);border-radius:99px;transition:width .3s cubic-bezier(.34,1.4,.64,1)}
 .opts{display:grid;gap:9px;margin-top:12px}

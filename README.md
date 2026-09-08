@@ -47,16 +47,30 @@ follow the real calendar month.
 
 ## Earning
 
-| Game | How it pays |
-| --- | --- |
-| Daily check in | both partners tap in once a day. 25 coins plus 5 a day of streak, capped at 100, and a bond |
-| Trivia duel | one answers 6 questions about themselves, passes the phone, the other guesses. 15 coins a match, 30 for a sweep |
-| Memory match | solo pairs, played with the actual props. 60 coins at par, floor of 10 |
+| Game | Cap | How it pays |
+| --- | --- | --- |
+| Today's question | once a day | one question, both partners answer, then both answers are revealed. 30 coins plus 3 a day of streak capped at 60, and a bond. This is the only thing that grows the streak. |
+| Trivia duel | once a day | one answers 6 questions about themselves, passes the phone, the other guesses. 12 coins a match, 20 for a sweep |
+| Memory match | twice a day | solo pairs, played with the actual props. 30 coins at par, floor of 8 |
 
-Rooms unlock at 500, 900 and 1400 coins, and the dome physically grows to fit
-whatever has been built. Charm summed over placed props is the public score, and
-the mementos (photo wall, heart statue, framed vows) are where it really moves,
-so the street ranks time and effort rather than tidiness.
+**The caps are the point.** With no limits the whole catalogue could be bought
+in about forty minutes of repeating the duel, and a home you can finish in an
+afternoon records nothing. The ceiling is now 242 coins on a perfect day, and
+there is no way to exceed it.
+
+Six rooms unlock at 700, 1,400, 2,200, 3,200 and 4,300 coins, and the dome
+physically grows to fit whatever has been built. Charm summed over placed props
+is the public score, and the mementos (photo wall, heart statue, framed vows,
+the ring) are where it really moves, so the street ranks time and effort rather
+than tidiness.
+
+**The curve.** The catalogue is 49 props and 6 rooms, 49,480 coins in total. An
+engaged couple doing the ritual daily, one duel and two memory rounds earns
+about 36,000 coins in six months, which is every room and roughly 41 of the 49
+props. The 8 left over are the point: if everyone can afford everything, every
+house on the street is identical and the showcase means nothing. Real variety
+wants a catalogue two or three times this size, which is content production and
+the honest long pole.
 
 ## Section 16 as code
 
@@ -67,16 +81,21 @@ the app. Tap **QA** on the dome. For every prop in the catalogue it checks:
 - at most one accent colour
 - triangle count inside the budget for its asset class
 - reads as a silhouette at 64 pixels, and reads at all eight sampled yaws
+- a distinct silhouette from every other prop, compared by shape at a common
+  scale with proportion preserved, since a flat rug and a tall wardrobe are both
+  solid rectangles once a crop is stretched to a square
 - silhouette distinct from every other prop, compared by shape rather than size
 
-All 32 props pass at eight yaws. Two are flagged as thin for their class rather
-than failing:
+All 49 props pass at eight yaws, with no silhouette collisions. Two are flagged
+as thin for their class rather than failing:
 the warm lamp at 144 triangles and the wardrobe at 1594. That is a finding about
 the bible's floors, not about the props. The triangle ranges in section 6 assume
 two bevel segments everywhere; parts under 85mm here use a single segment, which
 is invisible at any real zoom and cuts the catalogue from roughly 90,000
-triangles to 43,000. A full four room lot renders at about 53,000 against the
-100,000 budget, which leaves real headroom for the Unity build.
+triangles to 43,000. A fully furnished six room home renders at about 96,000 against the section 6
+budget of 100,000, which is tight enough to be a finding in itself: at this
+catalogue size the budget and the room count are in tension, and the real build
+will want instancing or another pass at the bevel segments.
 
 ## Where the prototype knowingly diverges
 
