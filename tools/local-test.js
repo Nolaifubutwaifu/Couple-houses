@@ -7,10 +7,10 @@ const pass = [], fail = [];
 const ok = (n, c, note) => { const l = n + (note ? " :: " + note : ""); (c ? pass : fail).push(l);
   console.log((c ? "  ok   " : "  FAIL ") + l); };
 
-async function tab(ctx, who){
+async function tab(ctx, who, config){
   const page = await ctx.newPage();
   page.on("pageerror", e => console.log("  [" + who + " pageerror]", e.message));
-  await page.addInitScript(() => { window.NEST_CONFIG = { url:"" }; });
+  await page.addInitScript(c => { window.NEST_CONFIG = c; }, config || { url:"" });
   await page.goto(ORIGIN);
   await page.waitForFunction(() => typeof Api !== "undefined" && !!Api.readyP, null, { timeout:20000 });
   await page.evaluate(() => Api.readyP);
@@ -28,6 +28,17 @@ async function tab(ctx, who){
   const A = await tab(ctx, "A"), B = await tab(ctx, "B");
   ok("the backend stays off with no url", await A.eval(() => Api.backend === null && Backend.reason === "not configured"),
      await A.eval(() => Backend.reason));
+
+  /* The live site's actual state until anonymous sign in is switched on: the
+     database is reachable and has no way into it, which must fall back rather
+     than strand somebody at a sign in screen that cannot work. */
+  const probe = await tab(ctx, "probe", { url:"http://127.0.0.1:8811", lib:"/_lib/supabase.js", probeMs:15000 });
+  const state = await probe.eval(() => ({ backend:Api.backend, reason:Backend.reason, ways:Onboard.ways() }));
+  ok("a reachable database with no way in falls back", state.backend === null &&
+     /no sign in method/.test(state.reason), JSON.stringify(state));
+  ok("and the screen offers the local providers instead",
+     JSON.stringify(state.ways) === JSON.stringify(["apple", "google", "email"]), JSON.stringify(state.ways));
+  await probe.page.close();
 
   let r = await A.call("POST", "/auth/session", { provider:"apple", subject:"ada" });
   ok("A signs in locally", r.ok && r.r.is_new === true, JSON.stringify(r).slice(0, 100));

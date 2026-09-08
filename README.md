@@ -221,13 +221,17 @@ phone, a paused project and no configuration at all are the same case, and the
 same fallback covers all four. `window.NEST_CONFIG = { url:"" }` forces it off,
 which is what the published artifact build does.
 
-**It is opt in, and there is one reason.** Visit with `?live` to use the real
-database; without it the local store runs. Supabase's built in mailer only
-delivers to the project's own team, so a stranger arriving at the public demo
-and signing in with their email would wait for a code that never comes. A
-working local demo beats a real backend nobody can get into. The fix is custom
-SMTP on the project, after which `autoEnable: true` in `src/backend.js` makes
-the database the default and this paragraph goes away.
+**It switches itself on when there is a way in.** The probe reads the
+project's own auth settings, and a database nobody can sign in to is worse
+than no database, because the failure lands on a person at the sign in screen
+instead of quietly at boot. So the sign in screen offers what the project
+actually has enabled, and if that list is empty the local store runs. Enabling
+a provider is all it takes; no deploy follows it.
+
+**Guest accounts.** With anonymous sign in on, "Start a nest" makes a real
+Supabase account with no email attached. It pairs, it earns, it owns a nest,
+and it can be given an email later without losing any of that. What it cannot
+survive is a cleared browser, which is the whole of the trade.
 
 **What lives where.** Identity and email codes are Supabase Auth. The nest, the
 memberships, the invites and the reports are tables. The game itself is one
@@ -251,20 +255,21 @@ asserts a signed in stranger can read no nest, no membership, no invite, no
 report and no profile but their own, and can neither write to a nest nor join
 one.
 
-**Three things stand between opt in and default**, all of them settings on the
-Supabase project rather than code:
+**What email still needs**, all settings on the Supabase project rather than
+code, which is why `emailReady` in `src/backend.js` is false and email is not
+offered:
 
-1. **Custom SMTP.** The built in mailer only delivers to the project's own
-   team and is rate limited. Until this is set, nobody else can sign in.
-2. **`{{ .Token }}` in the email templates.** The stock Magic Link and Confirm
+1. **`{{ .Token }}` in the email templates.** The stock Magic Link and Confirm
    Signup templates send a link, not a six digit code, and this product asks
    for a code. Both templates need the token in them.
+2. **Custom SMTP.** The built in mailer only delivers to the project's own
+   team and is rate limited to a couple of messages an hour. Adding a second
+   address to the organisation is enough to test with; strangers need real
+   SMTP.
 3. **Password sign in off.** The product has no passwords. Leaving the
    password grant enabled is a login path nothing in the app uses, and it is
    the only reason the project's advisor list mentions leaked password
    protection at all.
-
-Then `autoEnable: true` in `src/backend.js`.
 
 **What is still not right.** The game document is client authoritative: a
 determined player can write themselves any number of hearts. That is fine for

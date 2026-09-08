@@ -185,12 +185,7 @@ const Onboard = {
     const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">Begin</p>
       <p class="s dim">One tap. No passwords, ever.</p>
-      <div class="ob-auth">${Api.backend ? `
-        <button class="btn go" data-p="email">Continue with email</button>` : `
-        <button class="btn go ob-apple" data-p="apple">Sign in with Apple</button>
-        <button class="btn ob-prov" data-p="google">Continue with Google</button>
-        <button class="btn ob-prov" data-p="email">Continue with email</button>`}
-      </div>
+      <div class="ob-auth">${this.authButtons()}</div>
       <p class="ob-legal">By continuing you agree to our <a href="#terms" id="ob-terms">Terms</a> and
         <a href="#privacy" id="ob-priv">Privacy Policy</a>.</p>
       <button class="ob-quiet" id="ob-have">I already have a nest</button>
@@ -198,10 +193,23 @@ const Onboard = {
     s.querySelectorAll("[data-p]").forEach(b => {
       b.onclick = () => this.authWith(b.dataset.p);
     });
-    s.querySelector("#ob-have").onclick = () => this.authWith(Api.backend ? "email" : "apple");
+    s.querySelector("#ob-have").onclick = () => this.authWith(this.ways()[0]);
     ["#ob-terms", "#ob-priv"].forEach(id => {
       s.querySelector(id).onclick = e => { e.preventDefault(); this.legal(id === "#ob-terms" ? "Terms" : "Privacy Policy"); };
     });
+  },
+  /* With a backend, the project decides what exists: offering Apple when
+     Apple is switched off is a dead end wearing a working button. Without
+     one, the local store stands in for all three. */
+  ways(){ return Api.backend ? Backend.providers : ["apple", "google", "email"]; },
+  authButtons(){
+    const label = {
+      guest:"Start a nest", apple:"Sign in with Apple",
+      google:"Continue with Google", email:"Continue with email",
+    };
+    return this.ways().map((p, i) =>
+      `<button class="btn ${i === 0 ? "go" : "ob-prov"}${p === "apple" && i === 0 ? " ob-apple" : ""}"
+        data-p="${p}">${label[p]}</button>`).join("\n        ");
   },
   legal(title){
     const s = this.sheet(`<div class="ob-card">
@@ -214,6 +222,8 @@ const Onboard = {
   async authWith(provider){
     Track.fire("auth_started", { provider });
     if(provider === "email") return this.emailStart();
+    // a guest account needs nothing typed, so there is nothing to show
+    if(provider === "guest") return this.completeAuth("guest", null, null);
     // Apple and Google cannot really run in a page, so this stands in for
     // the provider's account sheet. The same handle restores the same
     // identity, which is what makes the reinstall case testable.

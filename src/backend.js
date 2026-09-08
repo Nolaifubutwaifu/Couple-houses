@@ -13,13 +13,12 @@ const BACKEND = Object.assign({
   lib: "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js",
   probeMs: 4000,
   pollMs: 4000,
-  /* The database is live. The default is not, and the reason is email:
-     Supabase's built in mailer only delivers to the project's own team, so
-     until custom SMTP is configured a stranger signing in on the public demo
-     would wait for a code that never arrives. Better a working local demo
-     than a real backend nobody can get into. Add ?live to the url to use it,
-     and set autoEnable once mail is real. */
-  autoEnable: false,
+  /* Email is on in the project but the templates still send a link rather
+     than the six digit code this product asks for, and the built in mailer
+     only reaches the project's own team. So email is not a usable way in yet,
+     and saying so here is better than finding out at the code screen. Flip
+     this when the templates carry {{ .Token }} and SMTP is real. */
+  emailReady: false,
 }, (typeof window !== "undefined" && window.NEST_CONFIG) || {});
 
 /* One browser is normally one person. ?as=2 gives this tab its own auth
@@ -33,11 +32,15 @@ const Backend = {
   async boot(){
     if(!BACKEND.url || !BACKEND.key) return this.off("not configured");
     if(location.protocol === "file:") return this.off("file:// cannot reach a backend");
-    if(!BACKEND.autoEnable && !/[?&]live\b/.test(location.search))
-      return this.off("live backend is opt in until email is real, add ?live");
     try{
-      const alive = await this.probe();
-      if(!alive) return this.off("backend unreachable");
+      const settings = await this.probe();
+      if(!settings) return this.off("backend unreachable");
+      /* A database nobody can sign in to is worse than no database, because
+         the failure lands on a person at the sign in screen instead of here.
+         So the project's own settings decide: the moment a way in is enabled
+         this turns itself on, and until then the local store runs. */
+      this.providers = this.waysIn(settings);
+      if(!this.providers.length) return this.off("no sign in method is enabled on the project");
       const lib = await this.library();
       if(!lib) return this.off("client library blocked");
       this.sb = lib.createClient(BACKEND.url, BACKEND.key, {
@@ -67,10 +70,24 @@ const Backend = {
     try{
       const r = await fetch(BACKEND.url + "/auth/v1/settings",
         { headers:{ apikey:BACKEND.key }, signal:ctl.signal });
-      return r.ok;
-    }catch(err){ return false; }
+      return r.ok ? await r.json() : null;
+    }catch(err){ return null; }
     finally{ clearTimeout(t); }
   },
+  /* Only ways in that actually work, in the order the screen should offer
+     them. A provider the project has switched off is not an option, and
+     neither is email while the code never arrives. */
+  waysIn(settings){
+    if(BACKEND.providers) return BACKEND.providers;      // told, rather than asked
+    const ext = (settings && settings.external) || {};
+    const out = [];
+    if(ext.anonymous_users) out.push("guest");
+    if(ext.apple) out.push("apple");
+    if(ext.google) out.push("google");
+    if(ext.email && BACKEND.emailReady) out.push("email");
+    return out;
+  },
+  providers: [],
   library(){
     if(window.supabase && window.supabase.createClient) return Promise.resolve(window.supabase);
     return new Promise(res => {
@@ -222,10 +239,22 @@ const Backend = {
 };
 
 const BROUTES = {
-  /* Apple and Google are real providers here, not stand ins, so they either
-     work or they are honestly unavailable. Email is the one that is on. */
+  /* Providers are real here rather than stand ins, so they either work or
+     they are honestly unavailable. Guest is a real Supabase account with no
+     email on it: it pairs, it earns, it owns a nest, and it can be given an
+     email later without losing any of that. What it cannot survive is a
+     cleared browser, which is the whole of the trade. */
   async "POST /auth/session"({ provider }){
-    throw apiError(501, "provider_unavailable:" + provider);
+    if(provider !== "guest") throw apiError(501, "provider_unavailable:" + provider);
+    const r = await this.sb.auth.signInAnonymously();
+    if(r.error){
+      if(/anonymous/i.test(r.error.message || "")) throw apiError(501, "provider_unavailable:guest");
+      throw apiError(500, "auth_failed");
+    }
+    await this.setSession(r.data.session);
+    let p = await this.profile();
+    if(!p) p = this.ok(await this.sb.from("profiles").insert({ id:this.uid }).select().single());
+    return { user:p, is_new:!p.display_name };
   },
 
   async "POST /auth/email/start"({ email }){

@@ -18,6 +18,16 @@
        '{}', '', '', '', '');
      -- and the matching auth.identities row, and the same for bo@ and eve@
 
+   The run leaves state behind on purpose, since it ends by deleting an
+   account and checking the nest survives it. So recreate the three accounts
+   before every run rather than reusing them, and delete them afterwards:
+
+     delete from reports; delete from invites; delete from memberships;
+     delete from nests;
+     delete from profiles where id in
+       (select id from auth.users where email like '%@nest.test');
+     delete from auth.users where email like '%@nest.test';
+
    It also needs somewhere to serve the app from, with a way through to the
    database. Any static server on 8811 will do when the browser can reach
    Supabase directly. */
@@ -25,7 +35,7 @@ const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-71
 
 const ORIGIN = "http://127.0.0.1:8811/index.html";
 const PW = "nest-test-pw";
-const pass = [], fail = [];
+const pass = [], fail = [], skip = [];
 const ok = (name, cond, note) => { const line = name + (note ? " :: " + note : ""); (cond ? pass : fail).push(line); console.log((cond ? "  ok   " : "  FAIL ") + line); };
 
 async function person(browser, email, tag){
@@ -38,7 +48,7 @@ async function person(browser, email, tag){
     // the sandbox browser cannot open its own tunnel, so the outbound leg
     // runs in the test server. Same database, same code, one hop shifted.
     window.NEST_CONFIG = { url:location.origin, lib:"/_lib/supabase.js",
-      probeMs:15000, pollMs:1500, autoEnable:true };
+      probeMs:15000, pollMs:1500, providers:["guest"] };
   });
   await page.goto(ORIGIN + "?as=" + tag);
   await page.waitForFunction(() => typeof Api !== "undefined" && !!Api.readyP, null, { timeout:20000 });
@@ -66,6 +76,32 @@ async function person(browser, email, tag){
           "--proxy-bypass-list=127.0.0.1;localhost",
           "--ignore-certificate-errors"],
   });
+  /* The guest path cannot be exercised until the project has anonymous sign
+     in switched on, so it reports honestly rather than passing quietly. */
+  {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.addInitScript(() => {
+      window.NEST_CONFIG = { url:location.origin, lib:"/_lib/supabase.js",
+        probeMs:15000, pollMs:1500, providers:["guest"] };
+    });
+    await page.goto(ORIGIN + "?as=g");
+    await page.waitForFunction(() => typeof Api !== "undefined" && !!Api.readyP, null, { timeout:20000 });
+    await page.evaluate(() => Api.readyP);
+    const r = await page.evaluate(() => Api.call("POST", "/auth/session", { provider:"guest" })
+      .then(r => ({ ok:true, r })).catch(e => ({ ok:false, code:e.code })));
+    if(!r.ok && /provider_unavailable/.test(r.code || "")){
+      skip.push("guest sign in :: anonymous sign in is switched off on the project");
+      console.log("  SKIP guest sign in :: anonymous sign in is switched off on the project");
+    }else{
+      ok("a guest signs in with nothing typed", r.ok && r.r.user && r.r.is_new === true, JSON.stringify(r));
+      const uid = await page.evaluate(() => Backend.uid);
+      ok("the guest has a real account and a profile row", !!uid, String(uid));
+      await page.evaluate(() => Backend.sb.auth.signOut());
+    }
+    await ctx.close();
+  }
+
   const A = await person(browser, "ada@nest.test", "1");
   const B = await person(browser, "bo@nest.test", "2");
   ok("both tabs booted against the backend", true);
@@ -251,7 +287,9 @@ async function person(browser, email, tag){
 })().catch(e => { console.error("harness error:", e.stack); report(); process.exit(2); });
 
 function report(){
-  console.log("\nPASS " + pass.length + "  FAIL " + fail.length);
+  console.log("\nPASS " + pass.length + "  FAIL " + fail.length +
+              (skip.length ? "  SKIP " + skip.length : ""));
   fail.forEach(f => console.log("  FAIL " + f));
+  skip.forEach(f => console.log("  SKIP " + f));
   process.exit(fail.length ? 1 : 0);
 }
