@@ -228,10 +228,14 @@ instead of quietly at boot. So the sign in screen offers what the project
 actually has enabled, and if that list is empty the local store runs. Enabling
 a provider is all it takes; no deploy follows it.
 
-**Guest accounts.** With anonymous sign in on, "Start a nest" makes a real
-Supabase account with no email attached. It pairs, it earns, it owns a nest,
-and it can be given an email later without losing any of that. What it cannot
-survive is a cleared browser, which is the whole of the trade.
+**Guest accounts, which is what the live site runs on.** "Start a nest" makes
+a real Supabase account with no email attached. It pairs, it earns, it owns a
+nest, survives a reload, and can be given an email later without losing any of
+that. What it cannot survive is a cleared browser, which is the whole of the
+trade. `tools/guest-pair-test.js` drives the path a couple actually takes: two
+browsers, two guests, nothing typed but two names and two birthdays, through
+founding, sharing, claiming, confirming, and both of them furnishing one house
+while watching the other's changes arrive.
 
 **What lives where.** Identity and email codes are Supabase Auth. The nest, the
 memberships, the invites and the reports are tables. The game itself is one
@@ -279,12 +283,16 @@ thing to move server side if the street ever ranks on anything earned.
 **Two devices, checked rather than assumed.** `node tools/pairing-test.js`
 drives two isolated browsers through founding, claiming, confirming, naming,
 spending, publishing, reporting, leaving and deleting against the live
-database: 49 assertions, including that each person sees the other's spending
+database: 51 assertions, including that each person sees the other's spending
 without touching the screen, that a frozen nest is readable by both and
 writable by neither, and that deleting one account takes that name off the nest
-and leaves the house standing. `node tools/local-test.js` runs the same flow
-with the backend switched off, so the fallback is a tested path rather than a
-hope.
+and leaves the house standing. `node tools/guest-pair-test.js` adds the 13 that
+matter most, since they are the ones a real couple performs. `node
+tools/local-test.js` runs the same flow with the backend switched off, so the
+fallback is a tested path rather than a hope.
+
+All three need a static server on 8811 serving this directory; the two against
+the database also need the browser to be able to reach Supabase.
 
 ## Leaving, deletion and moderation
 
@@ -354,7 +362,10 @@ mesh. Balance numbers all sit in one `BALANCE` object in `src/games.js`.
 - `docs/backend.sql` — the whole database in one runnable file
 - `tools/artifact_build.mjs` — inlines the sources and points three.js at a CDN
   for publishing as a hosted page. `node tools/artifact_build.mjs`
-- `tools/pairing-test.js` — two browsers, one database, 49 assertions
+- `tools/guest-pair-test.js` — the path a couple takes, two guests and no
+  test accounts at all
+- `tools/pairing-test.js` — two browsers, one database, every rule and every
+  thing a stranger must not be able to reach
 - `tools/local-test.js` — the same flow with no backend at all
 
 ## Delivery targets for the real build
