@@ -85,6 +85,30 @@ function newGame(nest){
   };
 }
 
+/* An instanceId is the only handle a placed thing has, and pick up removes
+   every row that matches it: two things sharing an id means lifting one
+   deletes both and hands back one, which is how a player loses furniture they
+   paid for. The tutorial used to write "start_plant" on every tap, so saves
+   already in the wild carry the damage and repairing on load is the only way
+   to reach them. Nothing is deleted here. The duplicate keeps its place on the
+   floor and gets an id of its own. */
+function repairInstanceIds(g){
+  if(!g || !g.house) return false;
+  const seen = new Set();
+  let fixed = 0;
+  const claim = item => {
+    if(!item || !item.instanceId) return;
+    if(seen.has(item.instanceId)){
+      item.instanceId = item.itemId + "_fix_" + uid();
+      fixed++;
+    }
+    seen.add(item.instanceId);
+  };
+  (g.house.inventory || []).forEach(claim);
+  (g.house.placed || []).forEach(claim);
+  return fixed > 0;
+}
+
 /* Three way merge, for the save the database refused because the other person
    got there first. The three documents are what this device started from, what
    it has now, and what is actually stored, and every field in the game has an
@@ -192,6 +216,7 @@ const App = {
     if(!Api.db.game[nestId]) Api.db.game[nestId] = newGame({ id:nestId });
     state = Api.db.game[nestId];
     state.nest_id = nestId;
+    if(repairInstanceIds(state)) Store.save(state);
     return state;
   },
   saveGame(){
@@ -296,7 +321,27 @@ const App = {
       s.appendChild(el(`<div class="card">
         <p class="h">${esc(me.nest.name || "Your nest")}</p>
         <p class="s dim">${other && other.user ? "With " + esc(other.user.display_name) : "Just you"} ·
-          started ${new Date(me.nest.created_at).toLocaleDateString()}</p></div>`));
+          started ${formatDate(me.nest.created_at)}</p></div>`));
+      const rename = el(`<div class="card">
+        <p class="h">Rename this nest</p>
+        <p class="s dim">You both named it together. Either of you can change it, and the
+        other one is told.</p>
+        <label class="f" style="margin-top:12px"><span>Name</span>
+          <input id="set-name" maxlength="28" value="${esc(me.nest.name || "")}"></label>
+        <button class="btn" id="set-rename">Save the name</button></div>`);
+      rename.querySelector("#set-rename").onclick = async () => {
+        const name = rename.querySelector("#set-name").value.trim();
+        if(!name) return toast("It needs a name");
+        if(name === me.nest.name) return;
+        try{
+          await Api.call("POST", "/nests/" + me.nest.id + "/name", { name });
+          me.nest.name = name;
+          toast("Renamed");
+          render();
+        }catch(err){ toast("That did not save. Try again?"); }
+      };
+      s.appendChild(rename);
+
       const leave = el(`<div class="card">
         <p class="h">Leave this nest</p>
         <p class="s dim">The nest stops here for both of you. Nothing is deleted and nobody
@@ -314,11 +359,40 @@ const App = {
       arch.nests.forEach(n => {
         const names = n.members.map(m => m.name || "Someone").join(" and ");
         const card = el(`<button class="row"><div><p class="h">${esc(n.name || "A nest")}</p>
-          <p class="s dim">${esc(names)} · frozen ${new Date(n.archived_at).toLocaleDateString()}</p></div></button>`);
+          <p class="s dim">${esc(names)} · frozen ${formatDate(n.archived_at)}</p></div></button>`);
         card.onclick = () => this.showArchived(n);
         s.appendChild(card);
       });
     }
+
+    /* Settings held nothing but the two irreversible things. Signing out is
+       the ordinary way to hand the device back, and without it the only ways
+       off an account were leaving the nest or deleting it. */
+    const out = el(`<div class="card">
+      <p class="h">Sign out</p>
+      <p class="s dim">Nothing is deleted and the nest is untouched. Signing back in with the
+      same account puts you exactly here.</p>
+      <button class="btn" id="set-out" style="margin-top:12px">Sign out</button></div>`);
+    out.querySelector("#set-out").onclick = () => {
+      Api.Session.clear();
+      Track.fire("signed_out", { from:"settings" });
+      this.restart();
+    };
+    s.appendChild(out);
+
+    const help = el(`<div class="card">
+      <p class="h">Help and legal</p>
+      <p class="s dim">Something wrong, or a question about your data? Write to
+        <a href="mailto:${CONTACT_EMAIL}">${esc(CONTACT_EMAIL)}</a> and a person answers.</p>
+      <p class="s dim"><a href="#terms" id="set-terms">Terms</a> ·
+        <a href="#privacy" id="set-priv">Privacy Policy</a></p></div>`);
+    ["#set-terms", "#set-priv"].forEach(id => {
+      help.querySelector(id).onclick = e => {
+        e.preventDefault();
+        toast("The real document opens here in the product");
+      };
+    });
+    s.appendChild(help);
 
     const del = el(`<div class="card" style="margin-top:14px">
       <p class="h">Delete your account</p>
@@ -377,7 +451,7 @@ const App = {
       <p class="ob-h">${esc(nest.name || "A nest")}</p>
       <p class="s dim">${esc(names.map(n => n || "Someone").join(" and "))} · ${
         g ? g.house.placed.length : 0} things placed · frozen ${
-        new Date(nest.archived_at).toLocaleDateString()}</p>
+        formatDate(nest.archived_at)}</p>
       <p class="s dim">This one is finished. You can look at it, and that is all.</p>
       <button class="btn go" id="arch-back" style="margin-top:12px">Close</button></div>`);
     card.querySelector("#arch-back").onclick = () => App.restart();
@@ -452,6 +526,15 @@ function el(html){
 }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
 let toastTimer = null;
+/* 9/10/2026 is two different days depending on who is reading it, and the
+   browser locale is not the same question as the one the account answered at
+   signup. A named month is the same day in every locale. */
+function formatDate(value){
+  const d = value instanceof Date ? value : new Date(value);
+  if(isNaN(d)) return "";
+  return d.toLocaleDateString(undefined, { day:"numeric", month:"short", year:"numeric" });
+}
+
 function toast(msg){
   const t = $("#toast");
   t.textContent = msg;
@@ -459,7 +542,17 @@ function toast(msg){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("on"), 1900);
 }
+/* A toast is about the screen it was raised on. "Jo wants to join your nest"
+   following someone through the naming ceremony and into the app is a message
+   about a moment that has already happened. */
+function clearToast(){
+  const t = $("#toast");
+  if(!t) return;
+  clearTimeout(toastTimer);
+  t.classList.remove("on");
+}
 function go(tab, view){
+  clearToast();
   if(tab !== "show" && viewingLot){ viewingLot = null; refreshWorld(); }
   const was = route.tab;
   route = { tab, view:view || null };
@@ -725,11 +818,35 @@ async function render(){
   else if(route.tab === "play") screenPlay(sheet);
   else if(route.tab === "build") screenBuild(sheet);
   else await screenShowcase(sheet);
+  if(App.measureSheet) App.measureSheet();
 }
 
 /* ---- boot ----
    onboarding.js loads after this file, so boot waits for the document
    rather than running the moment app.js is parsed */
+/* The stage is whatever the sheet leaves, so the sheet has to say how much
+   that is. Measured rather than assumed, and the camera reframes to the box
+   it actually gets: on a short sheet the lot stops being cropped with half
+   the screen empty under it, and on a long one the last row stops hiding
+   behind the tab bar. */
+function watchSheet(){
+  const sheet = $("#sheet"), root = document.documentElement;
+  let queued = false;
+  const apply = () => {
+    queued = false;
+    if(document.body.classList.contains("onboarding")) return;   // the flow frames itself
+    const h = Math.round(sheet.getBoundingClientRect().height);
+    if(!h) return;
+    root.style.setProperty("--sheet", h + "px");
+    Diorama.resize();
+  };
+  const queue = () => { if(!queued){ queued = true; requestAnimationFrame(apply); } };
+  if(typeof ResizeObserver !== "undefined") new ResizeObserver(queue).observe(sheet);
+  addEventListener("resize", queue);
+  App.measureSheet = queue;
+  queue();
+}
+
 addEventListener("DOMContentLoaded", async function boot(){
   Diorama.init($("#stage"));
   Diorama.onPlace = spot => {
@@ -760,8 +877,12 @@ addEventListener("DOMContentLoaded", async function boot(){
     if(b.dataset.tab === "play") activeGame = null;
     go(b.dataset.tab);
   });
+  /* Off by default. #dev on the URL brings them back for whoever needs them,
+     which is us and never a couple looking at their living room. */
+  if(/[#&]dev\b/.test(location.hash)) $("#devbtn").hidden = $("#funbtn").hidden = false;
   $("#devbtn").onclick = () => openBible();
   $("#funbtn").onclick = () => openFunnel();
+  watchSheet();
   setTimeout(() => { const sp = $("#splash"); if(sp) sp.classList.add("gone"); }, 380);
   Onboard.begin();
 });

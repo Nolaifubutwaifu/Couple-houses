@@ -26,6 +26,7 @@ const springOut = (p, c) => { c = c === undefined ? 0.9 : c; return 1 + (c + 1) 
 const easeOutSine = p => Math.sin((p * Math.PI) / 2);
 const easeInOutSine = p => -(Math.cos(Math.PI * p) - 1) / 2;
 const lerp = (a, b, t) => a + (b - a) * t;
+const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 function softDisc(colour){
   const c = document.createElement("canvas");
@@ -51,6 +52,12 @@ const Diorama = {
   baseMaterial:null, terrainType:null, pulse:null, frameShift:0,
   fly:null, haze:null, ceremonyKey:1,
   frames:0, fps:60, _lastFpsAt:0,
+  /* onPlace has one owner: app.js, set once at boot. Anything that needs the
+     next tap for itself, such as the tutorial, pushes a mode and pops it when
+     it is done. Reassigning the field left the app with no handler for the
+     rest of the session, which cost a real item on every tap after the
+     tutorial. A stack cannot lose the owner because it never held it. */
+  placeModes:[],
 
   /* Section 4 named three stops. Yaw and zoom are both continuous now, so
      these are the multipliers of the lot radius the stops sit at, and the
@@ -101,6 +108,9 @@ const Diorama = {
     this.clock = new THREE.Clock();
     this.resize();
     addEventListener("resize", () => this.resize());
+    document.addEventListener("visibilitychange", () => {
+      if(document.hidden) this.pause(); else this.resume();
+    });
     this.ready = true;
     this.loop();
   },
@@ -124,7 +134,9 @@ const Diorama = {
     this.nameTex = new THREE.CanvasTexture(this.nameCanvas);
     const band = new THREE.Mesh(
       new THREE.CylinderGeometry(r + 0.008, r + 0.008, 0.34, 64, 1, true),
-      new THREE.MeshBasicMaterial({ map:this.nameTex, transparent:true, side:THREE.DoubleSide })
+      /* FrontSide: on DoubleSide the far half of the cylinder renders through
+         the near half and the couple's own names read mirrored. */
+      new THREE.MeshBasicMaterial({ map:this.nameTex, transparent:true, side:THREE.FrontSide })
     );
     band.position.y = -0.2;
     this.plinth.add(band);
@@ -668,7 +680,8 @@ const Diorama = {
   tap(e){
     if(this.held){
       const spot = this.hoverAt(...this.worldAt(e));
-      if(spot && this.canPlace(spot) && this.onPlace) this.onPlace(spot);
+      const place = this.placeHandler();
+      if(spot && this.canPlace(spot) && place) place(spot);
       return;
     }
     const r = this.renderer.domElement.getBoundingClientRect();
@@ -681,6 +694,11 @@ const Diorama = {
       if(o && this.onPick) this.onPick(o.userData.placed);
     }
   },
+  pushPlaceMode(fn){ this.placeModes.push(fn); },
+  popPlaceMode(){ this.placeModes.pop(); },
+  clearPlaceModes(){ this.placeModes.length = 0; },
+  placeHandler(){ return this.placeModes[this.placeModes.length - 1] || this.onPlace; },
+
   canPlace(spot){
     const occupied = Object.values(this.props).map(g => g.userData.placed);
     return !occupied.some(p => {
@@ -690,9 +708,39 @@ const Diorama = {
     });
   },
 
-  /* ---- the loop. Section 11: at least three ambient motions on screen. ---- */
+  /* ---- the loop. Section 11: at least three ambient motions on screen. ----
+     The ambient motion is the point, so it does not stop while you are
+     looking at it. What it does do is stop dead when the tab is hidden, and
+     drop to a half rate when nothing is moving but the ambience, because at
+     full rate behind a sheet that covers half the screen this is a battery
+     complaint in a review rather than a frame rate problem. */
+  IDLE_FRAME_MS: 1000 / 30,
+  pause(){
+    if(this._raf) cancelAnimationFrame(this._raf);
+    this._raf = null;
+    this._paused = true;
+  },
+  resume(){
+    if(!this._paused || !this.ready) return;
+    this._paused = false;
+    this.clock.getDelta();          // swallow the gap, or everything jumps
+    this.loop();
+  },
+  /* moving of its own accord, as opposed to breathing */
+  busy(){
+    if(this.fly || this.dragging || this.yawT < 1 || this.zoomT < 1 || this.spin) return true;
+    const props = Object.values(this.props || {});
+    return props.some(g => g.userData.anim);
+  },
   loop(){
-    requestAnimationFrame(() => this.loop());
+    this._raf = requestAnimationFrame(() => this.loop());
+    if(!this.busy()){
+      const at = performance.now();
+      if(this._lastDraw && at - this._lastDraw < this.IDLE_FRAME_MS) return;
+      this._lastDraw = at;
+    } else {
+      this._lastDraw = performance.now();
+    }
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.elapsedTime;
 
@@ -727,9 +775,16 @@ const Diorama = {
       this.applyView();
     }
     const camXZ = new THREE.Vector2(Math.sin(this.yaw), Math.cos(this.yaw));
+    /* A hard cutoff on one dot product left a band of yaw where the near wall
+       was neither facing enough to fade nor turned enough to clear the room,
+       so it stayed opaque and hid everything inside. Ramp across the
+       threshold instead, and never let the nearest wall go fully solid. */
     (this.walls || []).forEach(w => {
       const facing = w.userData.normal.dot(camXZ);
-      const want = facing > 0.25 ? 0.06 : 1;
+      let want = lerp(1, 0.06, smoothstep(0.0, 0.4, facing));
+      // a wall turned toward the camera at all is between you and the room,
+      // so it never goes all the way back to solid
+      if(facing > 0.02) want = Math.min(want, 0.6);
       w.userData.opacity = lerp(w.userData.opacity, want, 1 - Math.pow(0.001, dt));
       w.material.opacity = w.userData.opacity;
       w.visible = w.userData.opacity > 0.08;

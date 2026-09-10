@@ -12,13 +12,23 @@
    One rounded geometric sans, two weights. Cards on cream, no borders,
    no strokes. Panels never cover the dome. */
 :root{
-  --cream:#FBF3E7; --oat:#EFE1CD; --sand:#DCC7A8; --clay:#C4A78B; --cocoa:#8A6E58; --ink:#4A4038;
+  /* Interface tones, measured against the cream ground rather than picked by
+     eye. The three that carry text were 2.58, 2.06 and 4.28 to one, so every
+     primary button, every price and all of the secondary copy failed AA on
+     the screens people read most. These clear 4.5 and stay in the palette.
+     The 3D palette in palette.js is untouched: a prop is a lit surface, not
+     a line of type, and the art direction is the best thing in the build. */
+  --cream:#FBF3E7; --oat:#EFE1CD; --sand:#DCC7A8; --clay:#8C6947; --cocoa:#6E5A4A; --ink:#4A4038;
   --blush:#F5C9C6; --peach:#F7C9A3; --butter:#F6E3A8; --sage:#BFD6B4; --mist:#B9D3DC; --lilac:#CFC2E0;
-  --coral:#F2735F; --marigold:#F2A33C; --teal:#2F7A73; --plum:#7A4A6B;
+  --coral:#C2452F; --marigold:#F2A33C; --teal:#2F7A73; --plum:#7A4A6B;
   --card:rgba(251,243,231,.92);
   --shadow:0 8px 24px rgba(74,64,56,.12);
   --r:20px;
-  --sheet:45vh; --tabs:64px;
+  /* --sheet is measured, not assumed: app.js writes the sheet's real height
+     here and the stage takes the rest. A constant 45 percent left half the
+     screen empty on a two line sheet and cut the last row off a twelve line
+     one, both on the same screen size. */
+  --sheet:45vh; --sheet-min:20vh; --sheet-max:50vh; --tabs:64px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;height:100%;overscroll-behavior:none}
@@ -50,11 +60,13 @@ img{display:block;max-width:100%}
   transform:rotate(45deg);margin-right:9px}
 
 #tools{position:fixed;z-index:6;right:14px;top:calc(100vh - var(--sheet) - var(--tabs) - 62px);display:flex;gap:9px}
+#tools button[hidden]{display:none}
 #tools button{width:48px;height:48px;border-radius:16px;background:var(--card);box-shadow:var(--shadow);
   font-weight:700;font-size:13px;display:grid;place-items:center;color:var(--cocoa)}
 
-/* ---- the sheet, never taller than 45 percent ---- */
-#sheet{position:fixed;left:0;right:0;bottom:var(--tabs);height:var(--sheet);z-index:8;
+/* ---- the sheet: as tall as it needs, between a floor and a ceiling ---- */
+#sheet{position:fixed;left:0;right:0;bottom:var(--tabs);z-index:8;
+  height:auto;min-height:var(--sheet-min);max-height:var(--sheet-max);
   background:var(--cream);border-radius:26px 26px 0 0;box-shadow:0 -8px 30px rgba(74,64,56,.14);
   padding:16px 16px 20px;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #sheet::before{content:"";display:block;width:44px;height:5px;border-radius:99px;background:var(--sand);
@@ -98,7 +110,9 @@ img{display:block;max-width:100%}
 .chip[aria-current="true"]{background:var(--ink);color:var(--cream)}
 .chip.locked{opacity:.62}
 
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+/* four stats in a three column grid left the fourth alone on a row of its
+   own. Let the row decide how many fit. */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(82px,1fr));gap:10px;margin-bottom:12px}
 .stat{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:13px 6px;text-align:center}
 .stat b{display:block;font-size:20px;font-weight:700}
 .stat span{font-size:11.5px;color:var(--cocoa)}
@@ -135,7 +149,7 @@ img{display:block;max-width:100%}
 .answered,.waiting{display:flex;align-items:center;justify-content:space-between;gap:12px;
   background:var(--oat);border-radius:14px;padding:12px 14px;min-height:48px}
 .answered b,.waiting b{font-size:14px;flex:none}
-.answered span{font-size:14px;color:var(--cocoa);text-align:right}
+.answered span{font-size:14px;color:var(--ink);text-align:right}
 .answered{background:var(--sage)}
 .waiting .btn{flex:none}
 
@@ -185,6 +199,7 @@ body.onboarding #stage,body.onboarding .post{height:100vh}
 body.onboarding #sheet,body.onboarding #tabs,body.onboarding #bar,body.onboarding #tools{display:none}
 
 /* the layer never eats a tap meant for the dome: only its own controls do */
+#onboard[hidden]{display:none}      /* display:flex below outranks the UA rule */
 #onboard{position:fixed;inset:0;z-index:12;display:flex;flex-direction:column;
   justify-content:space-between;pointer-events:none}
 #ob-sheet{pointer-events:auto}
@@ -243,7 +258,17 @@ body.onboarding #sheet,body.onboarding #tabs,body.onboarding #bar,body.onboardin
 @keyframes obpulse{0%,100%{transform:scale(.8);opacity:.55}50%{transform:scale(1);opacity:1}}
 
 @media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }
-@media (min-height:900px){ :root{ --sheet:42vh } }
+
+/* Most first looks at a link like this one are on a laptop, where a phone
+   layout stretched to 1440px strands every control in the top left corner.
+   Hold the interface to a phone's width and centre it over the dome, which
+   is the one thing that is better big. */
+@media (min-width:720px){
+  #bar,#sheet,#tabs,#onboard{left:50%;right:auto;transform:translateX(-50%);width:min(520px,100%)}
+  #sheet{border-radius:26px}
+  #tabs{border-radius:0 0 26px 26px}
+  #tools{right:calc(50% - 260px - 62px)}
+}
 </style>
 </head>
 <body>
@@ -258,8 +283,10 @@ body.onboarding #sheet,body.onboarding #tabs,body.onboarding #bar,body.onboardin
   <button id="rot-l" title="Turn left">⟲</button>
   <button id="rot-r" title="Turn right">⟳</button>
   <button id="zoom" title="Zoom">home</button>
-  <button id="devbtn" title="Asset review, section 16">QA</button>
-  <button id="funbtn" title="Onboarding funnel">%</button>
+  <!-- The asset review and the funnel are for us, not for a couple looking at
+       their living room. They live behind #dev on the URL now. -->
+  <button id="devbtn" title="Asset review, section 16" hidden>QA</button>
+  <button id="funbtn" title="Onboarding funnel" hidden>%</button>
 </div>
 
 <div id="onboard" hidden>

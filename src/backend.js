@@ -382,11 +382,21 @@ const BROUTES = {
     if(name.length < 1 || name.length > 24) throw apiError(400, "bad_name");
     if(!birthdate) throw apiError(400, "bad_birthdate");
     const age = ageOf(birthdate);
+    /* Age is decided here, before anything is written. A row that fails the
+       check keeps neither the name nor the date: the screen it leads to says
+       the rule is about how personal information is handled, and storing a
+       self declared minor's name and date of birth on the way to saying so is
+       exactly what it promises not to do. */
+    if(age < MIN_AGE){
+      this.ok(await this.sb.from("profiles").update({
+        display_name:null, birthdate:null, age_verified:false, age_blocked:true,
+      }).eq("id", this.uid).select().single(), "save_failed");
+      throw apiError(403, "under_age", { min_age:MIN_AGE });
+    }
     const p = this.ok(await this.sb.from("profiles").update({
-      display_name:name, birthdate, age_verified: age >= MIN_AGE,
+      display_name:name, birthdate, age_verified:true, age_blocked:false,
       locale: navigator.language || "en",
     }).eq("id", this.uid).select().single(), "save_failed");
-    if(!p.age_verified) throw apiError(403, "under_age", { min_age:MIN_AGE, age });
     return { user:p };
   },
 

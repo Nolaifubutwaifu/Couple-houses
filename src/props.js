@@ -155,6 +155,20 @@ const CATALOGUE = [
       [-0.3, 0.3].forEach(x => g.add(box(0.14, 0.4, 0.72, "blush", x, 0.3, 0, { fabric:true })));
       legs(g, 0.72, 0.72, 0.3, "cocoa", 0.07);
     } },
+  /* Day one ends with 300 coins and a living room. Without something under
+     that line which is not already in the starter set, the shop is shut on the
+     evening the couple is most likely to look at it.
+     Round on a pedestal rather than a slab on four legs: a low rectangle on
+     legs reads as the garden bench at 64px, and section 16 says so out loud. */
+  { id:"cofftbl", name:"Coffee Table", price:260, charm:5, w:2, h:1, room:"living", cls:"medium", build(g){
+      g.add(cyl(0.6, 0.6, 0.08, "warmSand", 0, 0.34, 0, 28));    // top
+      g.add(cyl(0.56, 0.58, 0.04, "cocoa", 0, 0.3, 0, 28));      // rim under the top
+      g.add(cyl(0.09, 0.12, 0.3, "cocoa", 0, 0, 0, 16));         // stem
+      g.add(cyl(0.3, 0.34, 0.05, "cocoa", 0, 0, 0, 24));         // foot
+      g.add(cyl(0.08, 0.07, 0.12, "marigold", -0.2, 0.42, 0.1, 12));
+      g.add(box(0.26, 0.05, 0.2, "sage", 0.16, 0.42, -0.08));
+      g.add(box(0.24, 0.04, 0.18, "mist", 0.16, 0.47, -0.04, { ry:0.22 }));
+    } },
   { id:"books", name:"Bookshelf", price:350, charm:6, w:2, h:1, room:"living", cls:"large", build(g){
       [-0.41, 0.41].forEach(x => g.add(box(0.08, 1.42, 0.32, "cocoa", x, 0, 0)));
       [0, 0.4, 0.8, 1.2].forEach(y => g.add(box(0.9, 0.06, 0.32, "cocoa", 0, y, 0)));

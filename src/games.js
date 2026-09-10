@@ -11,8 +11,12 @@ const BALANCE = {
      streak. Deliberately the best rate in the game per second spent. */
   ritualBase: 30, ritualStreakStep: 3, ritualStreakCap: 60,
 
-  /* The duel. Once a day. Rewards knowing each other, not grinding. */
-  duelPerDay: 1, duelQuestions: 6, duelPerMatch: 12, duelSweepBonus: 20,
+  /* The duel. Once a day. Rewards knowing each other, not grinding.
+     The sweep bonus is gone and the per match rate is down: a perfect duel
+     used to pay 92, which is three days of ritual for forty seconds of one
+     person tapping through both halves on the same phone. The ritual is
+     supposed to be the best rate in the game and now it is again. */
+  duelPerDay: 1, duelQuestions: 6, duelPerMatch: 9, duelSweepBonus: 0,
 
   /* Memory. Filler for one person alone, so it pays least and caps soonest. */
   memoryPerDay: 2, memoryPairs: 6, memoryMax: 30, memoryMin: 8,
@@ -169,6 +173,18 @@ function spendPlay(game){
   if(game === "memory") state.daily.memory++;
 }
 
+/* Which row on this screen is yours. The founder is partner A, and there are
+   only ever two of them. */
+function myRitualKey(){
+  const m = App.me && App.me.membership;
+  return m && m.role === "partner" ? "b" : "a";
+}
+function ritualName(key){ return key === "a" ? state.couple.partnerA : state.couple.partnerB; }
+function hasAnswered(streak, key){
+  const v = streak[key + "Ans"];
+  return v !== null && v !== undefined;
+}
+
 /* the same question for both partners, stable for the whole day */
 function ritualToday(){
   const key = today() + (state.nest_id || "");
@@ -208,10 +224,25 @@ const GAMES = {
         <p class="h" style="margin-top:10px">${esc(q.q)}</p>
         <div class="ritual" id="rit"></div></div>`));
       const host = root.querySelector("#rit");
-      [["a", state.couple.partnerA], ["b", state.couple.partnerB]].forEach(([key, name]) => {
+      /* Two phones, not one. You answer your own row and nobody else's, and
+         you do not see theirs until yours is in. Rendering both rows on
+         whichever device opened the screen meant one person could answer for
+         both, read their partner's answer first, and take the streak, the
+         coins and the payoff line alone in four taps. The reveal is the whole
+         point of the ritual, so it waits. */
+      const mine = myRitualKey(), theirs = mine === "a" ? "b" : "a";
+      const both = hasAnswered(s, "a") && hasAnswered(s, "b");
+      [[mine, ritualName(mine), true], [theirs, ritualName(theirs), false]].forEach(([key, name, isMe]) => {
         const ans = s[key + "Ans"];
-        if(ans !== null && ans !== undefined){
-          host.appendChild(el(`<div class="answered"><b>${esc(name)}</b><span>${esc(q.o[ans])}</span></div>`));
+        if(hasAnswered(s, key)){
+          const show = isMe || both;
+          host.appendChild(el(`<div class="answered"><b>${esc(name)}</b>
+            <span>${show ? esc(q.o[ans]) : "answered"}</span></div>`));
+          return;
+        }
+        if(!isMe){
+          host.appendChild(el(`<div class="waiting"><b>${esc(name)}</b>
+            <span class="s dim">${done ? "missed it" : "not yet"}</span></div>`));
           return;
         }
         const row = el(`<div class="waiting"><b>${esc(name)}</b>
@@ -222,7 +253,7 @@ const GAMES = {
         };
         host.appendChild(row);
       });
-      if(s.aAns !== null && s.aAns !== undefined && s.bAns !== null && s.bAns !== undefined){
+      if(both){
         const same = s.aAns === s.bAns;
         root.appendChild(el(`<div class="card mid"><p class="h">${
           same ? "You said the same thing." : "Two different answers."}</p>
@@ -307,7 +338,7 @@ const GAMES = {
           const hit = g.guesses[i] === g.answers[i];
           list.appendChild(el(`<div class="line">
             <p class="s dim">${esc(q.q.replace("{A}", askName))}</p>
-            <p class="s"><b class="${hit ? "good" : "miss"}">${hit ? "matched" : "missed"}</b> said <b>${esc(q.o[g.answers[i]])}</b>${
+            <p class="s"><b class="${hit ? "good" : "miss"}">${hit ? "Matched" : "Missed"}</b> · ${esc(askName)} said <b>${esc(q.o[g.answers[i]])}</b>${
               hit ? "" : ', guessed <span class="dim">' + esc(q.o[g.guesses[i]]) + "</span>"}</p></div>`));
         });
         root.appendChild(list);

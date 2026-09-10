@@ -42,6 +42,40 @@ function saveDB(){
    reading: a sync in the middle of a route leaves the route mutating an
    orphaned copy and the write is silently lost. */
 function syncDB(){ if(!dbBroken) loadDB(); }
+
+/* Re-reading before a request is not enough on its own. localStorage is not
+   consistent across renderer processes on write, so read-then-write from two
+   tabs is a lost update rather than a transaction, and the request that lost
+   is gone without an error: that is how a redemption vanished and left the
+   invited partner waiting on a screen with nothing to tap. Hold a real mutex
+   across the whole read-run-write instead. Web Locks is the right primitive
+   and is everywhere the product ships; the token fallback is for the rest,
+   and expires so a tab that dies mid write cannot wedge the others. */
+const LOCK_KEY = DB_KEY + ".lock";
+const LOCK_MS = 2000;
+const LOCK_TOKEN = "lk_" + Math.random().toString(36).slice(2, 11);
+async function withStoreLock(fn){
+  if(dbBroken) return fn();
+  if(typeof navigator !== "undefined" && navigator.locks && navigator.locks.request){
+    return navigator.locks.request(DB_KEY, () => fn());
+  }
+  for(let i = 0; i < 40; i++){
+    let held = null;
+    try{ held = JSON.parse(localStorage.getItem(LOCK_KEY) || "null"); }catch(err){ held = null; }
+    if(!held || held.until < now()){
+      try{ localStorage.setItem(LOCK_KEY, JSON.stringify({ token:LOCK_TOKEN, until:now() + LOCK_MS })); }
+      catch(err){ break; }
+      let back = null;
+      try{ back = JSON.parse(localStorage.getItem(LOCK_KEY) || "null"); }catch(err){ back = null; }
+      if(back && back.token === LOCK_TOKEN){
+        try{ return await fn(); }
+        finally{ try{ localStorage.removeItem(LOCK_KEY); }catch(err){ /* nothing to release */ } }
+      }
+    }
+    await new Promise(r => setTimeout(r, 25));
+  }
+  return fn();                       // a second of contention is a wedged lock
+}
 /* A read of the newest committed rows that does not swap the graph, for the
    one check that has to see a racing tab's write. */
 function committed(){
@@ -90,6 +124,7 @@ const Realtime = {
 /* ---------------- session, one identity per tab ---------------- */
 const Session = {
   userId: null,
+  fromDevice: false,          // resumed from the device, not from this tab
   load(){
     try{ this.userId = sessionStorage.getItem(SESSION_KEY) || null; }catch(err){ this.userId = null; }
     // A tab with no session of its own falls back to the last identity on
@@ -97,20 +132,35 @@ const Session = {
     // Arriving on an invite link does not: the person opening it is the one
     // being invited, so they authenticate as themselves.
     const onInvite = /[?#&]j=[A-Za-z0-9]{6}/.test(location.search + location.hash);
+    /* On a shared laptop or a passed phone that fallback is whoever signed in
+       most recently, which is how an ordinary reload resumed as the wrong
+       partner. Resume it, because a reinstall has to land somewhere, but flag
+       it so the screen can ask before the session is treated as yours. */
+    this.fromDevice = false;
     if(!this.userId && !onInvite){
-      try{ this.userId = localStorage.getItem(SESSION_KEY + ".last") || null; }catch(err){ /* ignore */ }
+      try{
+        const last = localStorage.getItem(SESSION_KEY + ".last") || null;
+        if(last){ this.userId = last; this.fromDevice = true; }
+      }catch(err){ /* ignore */ }
     }
     const u = this.userId ? DB.users[this.userId] : null;
-    if(!u || u.deleted) this.userId = null;
+    if(!u || u.deleted){ this.userId = null; this.fromDevice = false; }
     return this.userId;
+  },
+  /* the person on this device said the resumed identity is theirs */
+  claimDevice(){
+    this.fromDevice = false;
+    if(this.userId) this.set(this.userId);
   },
   set(id){
     this.userId = id;
+    this.fromDevice = false;
     try{ sessionStorage.setItem(SESSION_KEY, id); localStorage.setItem(SESSION_KEY + ".last", id); }
     catch(err){ /* memory only */ }
   },
   clear(){
     this.userId = null;
+    this.fromDevice = false;
     try{ sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY + ".last"); }catch(err){}
   },
   get user(){ return this.userId ? DB.users[this.userId] : null; },
@@ -220,11 +270,23 @@ const routes = {
     if(name.length < 1 || name.length > 24) throw apiError(400, "bad_name");
     if(!birthdate) throw apiError(400, "bad_birthdate");
     const age = ageOf(birthdate);
+    /* Check before you keep. The screen this leads to says the rule is about
+       how we handle personal information, so keeping a self declared minor's
+       name and exact date of birth on the way to showing it is the one thing
+       it must not do. Nothing survives the block but the fact of it. */
+    if(age < MIN_AGE){
+      u.display_name = null;
+      u.birthdate = null;
+      u.age_verified = false;
+      u.age_blocked = true;                // enough to refuse, and nothing more
+      saveDB();
+      throw apiError(403, "under_age", { min_age:MIN_AGE });
+    }
     u.display_name = name;
     u.birthdate = birthdate;               // stored once, not silently editable later
-    u.age_verified = age >= MIN_AGE;
+    u.age_verified = true;
+    u.age_blocked = false;
     saveDB();
-    if(!u.age_verified) throw apiError(403, "under_age", { min_age:MIN_AGE, age });
     return { user:u };
   },
 
@@ -250,6 +312,18 @@ const routes = {
     const invite = issueInvite(nest.id, u.id);
     saveDB();
     return { nest, invite };
+  },
+
+  /* Enough to name the person on the other end of a link and nothing else.
+     Whoever is asking already has the code, and a link that says who invited
+     you converts better than one that opens on "Begin". */
+  "GET /invites/{code}"({ code }){
+    const inv = DB.invites[String(code || "").toUpperCase()];
+    if(!inv) throw apiError(404, "code_not_found");
+    if(expireInvite(inv).status !== "open") throw apiError(410, "code_expired");
+    const nest = DB.nests[inv.nest_id];
+    if(!nest) throw apiError(404, "code_not_found");
+    return { nest:nestPreview(nest) };
   },
 
   "POST /invites/{code}/revoke"({ code }){
@@ -602,10 +676,12 @@ const Api = {
     if(!Realtime.online) throw apiError(0, "offline");
     const hit = matchRoute(method, path);
     if(!hit) throw apiError(404, "no_route:" + method + " " + path);
-    syncDB();
-    const out = hit.route({ ...hit.params, ...(body || {}) });
-    saveDB();
-    return out;
+    return withStoreLock(() => {
+      syncDB();
+      const out = hit.route({ ...hit.params, ...(body || {}) });
+      saveDB();
+      return out;
+    });
   },
   /* The game document belongs to the nest, so where the nest lives decides
      where it is written. Locally that is the same localStorage blob the

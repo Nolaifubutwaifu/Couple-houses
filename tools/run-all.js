@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /* The suites make their own people and share nothing, so they can overlap.
-   Not by much, though: five Chromium instances on one small box spend their
-   time fighting each other, and measured that way all five at once was no
-   faster than one at a time and timed two of them out. Two at a time is
-   where the curve turns. Pass a name to run just one. */
+   Not by much, though: a pile of Chromium instances on one small box spend
+   their time fighting each other, and measured that way all of them at once
+   was no faster than one at a time and timed two of them out. Two at a time
+   is where the curve turns. Pass a name to run just one. */
 const { spawn } = require("node:child_process");
-const SUITES = ["local-test", "pairing-test", "guest-pair-test", "screen-pair-test", "room-sync-test"];
+const SUITES = ["local-test", "pairing-test", "guest-pair-test", "screen-pair-test", "room-sync-test",
+                "handoff-test", "entry-test"];
 const only = process.argv.slice(2);
 const list = only.length ? SUITES.filter(s => only.some(o => s.indexOf(o) >= 0)) : SUITES;
 

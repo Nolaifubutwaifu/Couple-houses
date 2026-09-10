@@ -51,14 +51,44 @@ const Onboard = {
     this.readDeepLink();
     const me = await Api.call("GET", "/nests/mine");
     // a returning identity restores its nest, it never gets a second one
-    if(me.user && me.user.age_verified === false && me.user.birthdate) return this.go("blocked");
+    if(me.user && (me.user.age_blocked || (me.user.age_verified === false && me.user.birthdate)))
+      return this.go("blocked");
+    /* This tab has no session of its own and resumed the last identity on the
+       device. On a shared laptop or a passed phone that is whoever signed in
+       most recently, so ask before handing them their partner's nest. */
+    if(me.user && me.user.display_name && Api.Session.fromDevice)
+      return this.go("whoIsThis", me);
     if(me.nest && me.membership.status === "active" && me.nest.status === "active") return App.enter(me);
     if(me.nest && me.membership.status === "invited") return this.go("awaitConfirm", { nest:me.nest });
     if(me.nest && me.nest.status === "pending") return this.go("waiting", me);
     if(me.user && me.user.display_name) return this.go(this.pendingCode ? "redeem" : "fork");
     if(me.user) return this.go("details");
     // criterion 2: the intro never replays on a later launch
+    await this.namePendingInvite();
     this.go(this.introSeen() ? "auth" : "cold");
+  },
+
+  /* The one screen between an ordinary reload and signing in as your
+     partner. Both answers are one tap and neither of them is a guess. */
+  s_whoIsThis(me){
+    this.top(null);
+    if(!this.demoShown) this.showDemo();
+    const name = me.user.display_name;
+    const s = this.sheet(`<div class="ob-card mid">
+      <p class="ob-h">Continue as ${esc(name)}?</p>
+      <p class="s dim">This device was last used by ${esc(name)}. If that is not you, start
+        your own instead: nothing here is shared between two accounts.</p>
+      <button class="btn go" id="ob-yes">Yes, I am ${esc(name)}</button>
+      <button class="ob-quiet" id="ob-no">Someone else</button></div>`);
+    s.querySelector("#ob-yes").onclick = () => {
+      Api.Session.claimDevice();
+      this.begin();
+    };
+    s.querySelector("#ob-no").onclick = async () => {
+      Api.Session.clear();
+      await this.namePendingInvite();
+      this.go(this.introSeen() ? "auth" : "cold");
+    };
   },
   readDeepLink(){
     const m = (location.search + location.hash).match(/[?#&]j=([A-Za-z0-9]{6})/);
@@ -72,21 +102,42 @@ const Onboard = {
     }
     this.pendingCode = code;
   },
+  /* Who sent the link, if the code still stands. Best effort by design: the
+     screen reads perfectly well without it and no transport is obliged to
+     answer, so a failure here is a quieter headline and nothing more. */
+  async namePendingInvite(){
+    this.inviterName = null;
+    if(!this.pendingCode) return;
+    try{
+      const r = await Api.call("GET", "/invites/" + this.pendingCode);
+      this.inviterName = r && r.nest ? r.nest.founder_name : null;
+    }catch(err){ /* an expired or unknown code names nobody */ }
+  },
   clearDeepLink(){
     this.pendingCode = null;
+    this.inviterName = null;
     try{ localStorage.removeItem("nest.deferred_code"); }catch(err){ /* fine */ }
   },
   finish(){
+    clearToast();
+    clearTimeout(this._escape);
+    clearTimeout(this.introTimer);          // no beat paints over the app behind it
+    this.step = null;
+    Diorama.clearPlaceModes();     // whatever the flow borrowed, the app gets back
+    Diorama.pulseTarget(null);
     Diorama.frameShift = 0;
     Diorama.applyView();
     document.body.classList.remove("onboarding");
     $("#onboard").hidden = true;
+    if(App.measureSheet) App.measureSheet();      // the app's sheet decides the stage now
     $("#ob-top").innerHTML = "";
     $("#ob-sheet").innerHTML = "";
     Diorama.orbit = 0;
   },
 
   go(step, ctx){
+    clearToast();          // a toast belongs to the screen that raised it
+    clearTimeout(this._escape);
     this.step = step;
     this.ctx = ctx || {};
     window.scrollTo(0, 0);
@@ -182,9 +233,12 @@ const Onboard = {
     this.top(null);
     if(!this.demoShown) this.showDemo();
     Diorama.orbit = 4 * Math.PI / 180;
+    /* An invite link that opens on a generic "Begin" throws away the only
+       thing it knows: who is on the other end of it. */
+    const from = this.inviterName;
     const s = this.sheet(`<div class="ob-card">
-      <p class="ob-h">Begin</p>
-      <p class="s dim">One tap. No passwords, ever.</p>
+      <p class="ob-h">${from ? esc(from) + " is waiting for you" : "Begin"}</p>
+      <p class="s dim">${from ? "Sign in and their nest is yours too. " : ""}One tap. No passwords, ever.</p>
       <div class="ob-auth">${this.authButtons()}</div>
       <p class="ob-legal">By continuing you agree to our <a href="#terms" id="ob-terms">Terms</a> and
         <a href="#privacy" id="ob-priv">Privacy Policy</a>.</p>
@@ -355,17 +409,32 @@ const Onboard = {
     };
   },
   /* A soft block with no retry loop: there is no way back to the date field
-     from here, because a retry loop just teaches the workaround. */
+     from here, because a retry loop just teaches the workaround. What there
+     now is, is a way out of the browser. Support is a real address rather
+     than the idea of one, and signing out ends the session so a mistyped year
+     stops being a permanent brick for everybody else on the device. Nothing
+     about the blocked person is still stored by this point: the age check
+     runs before the write, and the name and date were never kept. */
   s_blocked(){
     this.top(null);
     Diorama.orbit = 0;
-    this.sheet(`<div class="ob-card">
+    const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">Come back when you are sixteen</p>
       <p class="s dim">NEST is for people aged sixteen and over. That is a rule about how we
         handle personal information, not a judgement about you, and there is nothing to
         appeal here.</p>
-      <p class="s dim">If you got here by mistake, an adult in your household can contact
-        support and we will sort it out with them.</p></div>`);
+      <p class="s dim">We have not kept your name or your birthday. There is nothing here
+        with your name on it.</p>
+      <p class="s dim">If you got here by mistake, an adult in your household can write to
+        <a href="mailto:${CONTACT_EMAIL}?subject=Age%20check">${esc(CONTACT_EMAIL)}</a>
+        and we will sort it out with them.</p>
+      <button class="ob-quiet" id="ob-signout">Sign out of this device</button></div>`);
+    s.querySelector("#ob-signout").onclick = () => {
+      Api.Session.clear();
+      Track.fire("signed_out", { from:"age_block" });
+      this.clearDeepLink();
+      this.go(this.introSeen() ? "auth" : "cold");
+    };
   },
 
   /* ---------- S4 pair fork ---------- */
@@ -532,10 +601,18 @@ const Onboard = {
   s_awaitConfirm(){
     const nest = this.ctx.nest;
     this.top(null);
-    this.sheet(`<div class="ob-card mid">
+    /* Every waiting screen has a way off it. A join that fails is silent by
+       nature, and this screen used to render no buttons at all: a lost
+       redemption left the invited partner watching a pulse with nothing to
+       tap and no way back but quitting the app. The escape appears on the
+       same timer the poll is already running on, so it is late enough not to
+       read as an invitation to give up. */
+    const s = this.sheet(`<div class="ob-card mid">
       <p class="ob-h">Waiting for ${esc(nest.founder_name || "your partner")}</p>
       <p class="s dim">They have to say yes too. This only works if you both agree it is you.</p>
-      <div class="ob-pulse"></div></div>`);
+      <div class="ob-pulse"></div>
+      <div id="ob-escape" hidden></div></div>`);
+    this.offerEscape(s, "Nothing yet. They may not have the app open.", () => this.go("redeem"));
     Api.Realtime.on(msg => {
       if(this.step !== "awaitConfirm") return;
       if(msg.type === "pair.activated") this.afterPair();
@@ -587,6 +664,25 @@ const Onboard = {
      arrive is not a plan, so this asks. Against a database each ask is
      several queries, so it asks less often than it did over local storage,
      which is still well inside how long a person takes to read a code out. */
+  /* A waiting screen with no exit is the difference between a slow pairing
+     and a dead app. Give it twenty seconds, then a way out that does not
+     throw away the wait: the poll keeps running underneath. */
+  ESCAPE_AFTER: 20000,
+  offerEscape(scope, line, onRetry){
+    const host = scope.querySelector("#ob-escape");
+    if(!host) return;
+    clearTimeout(this._escape);
+    const step = this.step;
+    this._escape = setTimeout(() => {
+      if(this.step !== step || !host.isConnected) return;
+      host.hidden = false;
+      host.innerHTML = "";
+      host.appendChild(el(`<p class="s dim" style="margin-top:14px">${esc(line)}</p>`));
+      const b = el(`<button class="ob-quiet" id="ob-retry">Something went wrong, start again</button>`);
+      b.onclick = () => { clearInterval(this._poll); onRetry(); };
+      host.appendChild(b);
+    }, this.ESCAPE_AFTER);
+  },
   WAITING_STEPS: ["invite", "waiting", "awaitConfirm"],
   pollPair(nestId){
     clearInterval(this._poll);
@@ -729,7 +825,12 @@ const Onboard = {
   /* ---------- S8 first ritual, then first placement ---------- */
   s_firstRitual(){
     const me = this.ctx;
-    const q = RITUAL_QUESTIONS[Math.floor(Math.random() * RITUAL_QUESTIONS.length)];
+    /* ritualToday() and not a fresh roll per client: this is the one screen
+       that compares the two answers, so two devices rolling independently
+       compared answers to two different questions and told the couple
+       something about their relationship on that basis. */
+    App.ensureGame(me.nest.id);
+    const q = ritualToday();
     this.top(null);
     const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">${esc(q.q)}</p>
@@ -782,7 +883,13 @@ const Onboard = {
     this.sheet(null);
     Diorama.setHeld(item.itemId, 0);
     Diorama.pulseTarget({ room:"living", x:2, y:5 });
-    Diorama.onPlace = spot => {
+    /* Borrow the next tap, then hand it straight back. Assigning onPlace here
+       left the tutorial owning every tap for the rest of the session: the item
+       you had actually picked up was destroyed, a duplicate of the starter
+       plant was placed under the same instanceId every time, and the push
+       sheet reopened over the Build screen. */
+    Diorama.pushPlaceMode(spot => {
+      Diorama.popPlaceMode();
       App.game.house.placed.push({ instanceId:item.instanceId, itemId:item.itemId,
         room:spot.room, x:spot.x, y:spot.y, rot:0 });
       App.game.house.inventory = App.game.house.inventory.filter(i => i.instanceId !== item.instanceId);
@@ -793,7 +900,7 @@ const Onboard = {
       Track.fire("first_item_placed");
       Diorama.flyTo({ zoomK:Diorama.ZOOM_K[1], target:Diorama.lotCentre(), ms:1400 });
       setTimeout(() => this.go("push", me), 900);
-    };
+    });
   },
 
   /* ---------- S9 notification permission ---------- */
@@ -879,8 +986,12 @@ const Onboard = {
     Diorama.setBase(nest.base_material, nest.terrain_type);
     Diorama.setLot({ rooms, placed:[] }, null, "");
     Diorama.applyState("resting", seasonNow());
-    Diorama.setZoomK(Diorama.ZOOM_K[1]);      // frame the whole dome, it is the point
-    Diorama.flyTo({ zoomK:Diorama.ZOOM_K[1], target:Diorama.lotCentre(), ms:700 });
+    /* Wide rather than close. An empty nest framed so the two bare walls fill
+       the dome reads as a broken build, and this is the first thing an invited
+       partner sees. Pulled back, the glass, the ground and the plinth carry
+       the shot and the empty room reads as room to fill. */
+    Diorama.setZoomK(Diorama.ZOOM_K[0]);
+    Diorama.flyTo({ zoomK:Diorama.ZOOM_K[0], target:Diorama.lotCentre(), ms:700 });
   },
 
   /* Nudges go to the founder only. Nothing is ever sent to the person who
