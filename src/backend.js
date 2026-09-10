@@ -155,31 +155,84 @@ const Backend = {
      The game is one jsonb column on the nest, so both people read and write
      the same document. rev is what makes a stale write visible: a device
      that saves over a revision it has not seen loses the race and reloads. */
-  cache(nestId, game){
+  /* base is what this device last agreed with the database about. It is the
+     third document a merge needs, and without it a refused save can only
+     surrender or clobber. */
+  rev:0, base:null, saving:false, dirty:false,
+  clone(g){ return JSON.parse(JSON.stringify(g)); },
+  cache(nestId, game, rev){
     if(game){
       Api.db.game[nestId] = game;
-      this.rev = game.rev || 0;
+      this.rev = rev === undefined ? this.rev : rev;
+      this.base = this.clone(game);
     }
     return Api.db.game[nestId];
   },
-  rev:0, saving:false, dirty:false,
+  /* Every save moves the epoch on. A poll that started before it is asking
+     about a world that no longer exists, and must not be allowed to answer. */
+  epoch:0,
+  /* One writer, in a loop, always writing whatever the document currently
+     says rather than whatever it said when the call was made. The version
+     before this tried to track a pending write by hand and had a hole in it:
+     a change that arrived while a save was in flight could have its flag
+     cleared by that save and then be dropped, which looks exactly like your
+     partner's furniture never having existed. A loop that re-reads the live
+     document and only stops when nothing is left cannot lose a write. */
   async saveGame(g){
     if(!g || !g.nest_id || g.frozen) return;
+    const nest = g.nest_id;
+    this.epoch++;
     this.dirty = true;
-    if(this.saving) return;
+    if(this.saving) return;                 // the loop below will pick it up
     this.saving = true;
-    await new Promise(r => setTimeout(r, 250));          // one write per burst of taps
-    this.dirty = false;
-    g.rev = (g.rev || 0) + 1;
-    this.rev = g.rev;
-    const r = await this.sb.from("nests")
-      .update({ game:g, updated_at:new Date().toISOString(),
-                streak_count:(g.streak && g.streak.count) || 0 })
-      .eq("id", g.nest_id).select("updated_at").maybeSingle();
-    this.saving = false;
-    if(r.error) console.warn("game not saved:", r.error.message);
-    else this.stamp = r.data && r.data.updated_at;
-    if(this.dirty) this.saveGame(g);
+    try{
+      while(this.dirty){
+        this.dirty = false;
+        await new Promise(r => setTimeout(r, 180));   // one write per burst of taps
+        const doc = Api.db.game[nest];
+        if(!doc || doc.frozen) break;
+        const r = await this.sb.rpc("save_game", { n:nest, doc, base_rev:this.rev });
+        if(r.error){
+          console.warn("game not saved:", r.error.message);
+          break;                                       // the next change tries again
+        }
+        if(r.data && r.data.ok){
+          this.rev = r.data.rev;
+          this.base = this.clone(doc);
+          continue;
+        }
+        /* Refused, because the other person saved first. Put this device's
+           change on top of theirs rather than over it, and go round again to
+           write the result. */
+        const merged = mergeGame(this.base, doc, r.data.game);
+        merged.nest_id = nest;
+        Api.db.game[nest] = merged;
+        this.rev = r.data.rev;
+        this.base = this.clone(merged);
+        this.epoch++;
+        Realtime.deliver({ type:"game.changed", payload:{ nest_id:nest }, from:"merge" });
+        this.dirty = true;
+      }
+    }finally{ this.saving = false; }
+  },
+
+  /* ---------- one pair of hands at a time ---------- */
+  lock:{ mine:false, builder:null, builder_name:null, until:0 },
+  async takeLock(nestId){
+    const r = await this.sb.rpc("take_build_lock", { n:nestId, seconds:40 });
+    if(r.error) this.fail(r.error, "lock_failed");
+    this.lock = { mine:!!r.data.mine, builder:r.data.builder,
+                  builder_name:r.data.builder_name || null,
+                  until:Date.parse(r.data.until) || 0 };
+    this.retune();
+    return this.lock;
+  },
+  async dropLock(nestId){
+    this.lock = { mine:false, builder:null, builder_name:null, until:0 };
+    this.retune();
+    const r = await this.sb.rpc("release_build_lock", { n:nestId });
+    if(r.error) console.warn("lock not released:", r.error.message);
+    return { released:true };
   },
 
   /* ---------- live ----------
@@ -198,42 +251,81 @@ const Backend = {
     this.stamp = nest && nest.updated_at;
     try{
       this.chan = this.sb.channel("nest:" + nestId, { config:{ broadcast:{ self:false } } });
-      this.chan.on("broadcast", { event:"msg" }, e => Realtime.deliver(e.payload));
+      this.chan.on("broadcast", { event:"msg" }, e => this.onBroadcast(e.payload));
       this.chan.subscribe();
     }catch(err){ this.chan = null; }
-    this.timer = setInterval(() => this.pull(), BACKEND.pollMs);
+    this.tick = BACKEND.pollMs;
+    this.timer = setInterval(() => this.pull(), this.tick);
+    if(!this.wake){
+      // a backgrounded tab is not polled, so coming back has to catch up at
+      // once rather than after however long the next tick happens to be
+      this.wake = () => { if(!document.hidden) this.pull(); };
+      document.addEventListener("visibilitychange", this.wake);
+    }
   },
   unwatch(){
     clearInterval(this.timer);
+    this.tick = 0;
     if(this.chan) try{ this.sb.removeChannel(this.chan); }catch(err){ /* fine */ }
     this.chan = null; this.nestId = null;
   },
+  /* A small question asked often, and the big answer fetched only when the
+     revision says there is something new to fetch. */
   async pull(){
     // a fetch that overlaps a write comes back describing the past
-    if(!this.nestId || document.hidden || this.saving) return;
-    const r = await this.sb.from("nests")
-      .select("id,name,status,updated_at,frozen").eq("id", this.nestId).maybeSingle();
-    if(r.error || !r.data) return;
-    const n = r.data;
-    if(n.updated_at === this.stamp) return;
-    this.stamp = n.updated_at;
-    const full = await this.sb.from("nests").select("game,name,status,frozen")
-      .eq("id", this.nestId).maybeSingle();
-    if(full.error || !full.data) return;
-    const g = full.data.game;
-    /* Strictly newer, never merely different. A poll that left before a local
-       save and arrives after it holds an older document, and "different" reads
-       that as news: the older one is written over the newer, the next save
-       carries it back to the database, and a person watches the thing they
-       just placed disappear. */
-    if(g && g.nest_id && (g.rev || 0) > this.rev){
-      this.cache(this.nestId, g);
-      Realtime.deliver({ type:"game.changed", payload:{ nest_id:this.nestId }, from:"poll" });
-    }
-    if(full.data.frozen)
-      Realtime.deliver({ type:"nest.frozen", payload:{ nest_id:this.nestId, by:"partner" }, from:"poll" });
-    else if(full.data.name)
-      Realtime.deliver({ type:"nest.named", payload:{ nest_id:this.nestId, name:full.data.name }, from:"poll" });
+    if(!this.nestId || document.hidden || this.saving || this.pulling) return;
+    this.pulling = true;
+    /* Checking this on the way in is not enough. The answer arrives some
+       hundreds of milliseconds later, and if a save started in between then
+       what came back is already history: adopting it throws away the change
+       this device just made, and the next save writes the old document back
+       over the new one. So the question is asked again on the way out. */
+    const epoch = this.epoch;
+    const moved = () => this.saving || this.epoch !== epoch;
+    try{
+      const r = await this.sb.rpc("nest_pulse", { n:this.nestId });
+      if(r.error || !r.data) return;
+      const p = r.data;
+      const was = this.lock.builder, wasMine = this.lock.mine;
+      this.lock = { mine:p.builder === this.uid, builder:p.builder || null,
+                    builder_name:p.builder_name || null, until:Date.parse(p.builder_until) || 0 };
+      if(was !== this.lock.builder || wasMine !== this.lock.mine){
+        this.retune();
+        Realtime.deliver({ type:"build.lock", payload:{ nest_id:this.nestId, ...this.lock }, from:"poll" });
+      }
+
+      if((p.rev || 0) > this.rev && !moved()){
+        const full = await this.sb.from("nests").select("game")
+          .eq("id", this.nestId).maybeSingle();
+        if(!full.error && full.data && full.data.game && full.data.game.nest_id &&
+           (p.rev || 0) > this.rev && !moved()){
+          this.cache(this.nestId, full.data.game, p.rev);
+          Realtime.deliver({ type:"game.changed", payload:{ nest_id:this.nestId }, from:"poll" });
+        }
+      }
+      if(p.frozen)
+        Realtime.deliver({ type:"nest.frozen", payload:{ nest_id:this.nestId, by:"partner" }, from:"poll" });
+      else if(p.name && p.name !== this.lastName){
+        this.lastName = p.name;
+        Realtime.deliver({ type:"nest.named", payload:{ nest_id:this.nestId, name:p.name }, from:"poll" });
+      }
+    }finally{ this.pulling = false; }
+  },
+  /* The channel says "something changed", never what, so the answer is always
+     to go and look rather than to trust a payload that could be stale. */
+  onBroadcast(msg){
+    if(msg && msg.type === "game.changed"){ this.pull(); return; }
+    Realtime.deliver(msg);
+  },
+  /* While the other person is arranging the room, this is a live view of
+     their hands, so it asks far more often than it does at rest. */
+  retune(){
+    const busy = this.lock.builder && !this.lock.mine;
+    const want = busy ? 1000 : BACKEND.pollMs;
+    if(this.tick === want) return;
+    this.tick = want;
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.pull(), want);
   },
 
   /* ---------- the routes ---------- */
@@ -407,15 +499,25 @@ const BROUTES = {
     const snap = this.ok(await this.sb.rpc("nest_snapshot"), "no_profile");
     if(!snap || !snap.user) return { user:null };
     if(!snap.nest){ this.unwatch(); return { user:snap.user, nest:null }; }
-    if(!Api.db.game[snap.nest.id]){
-      const g = this.ok(await this.sb.from("nests").select("game")
+    if(!Api.db.game[snap.nest.id] || this.nestId !== snap.nest.id){
+      const g = this.ok(await this.sb.from("nests").select("game,game_rev")
         .eq("id", snap.nest.id).maybeSingle());
-      if(g && g.game && g.game.nest_id) this.cache(snap.nest.id, g.game);
+      if(g && g.game && g.game.nest_id) this.cache(snap.nest.id, g.game, g.game_rev);
+      else this.rev = (g && g.game_rev) || 0;
     }
     this.watch(snap.nest.id, snap.nest);
     return { user:snap.user, nest:snap.nest, membership:snap.membership,
              members:snap.members || [], invite:snap.invite || null,
              pending_partner:snap.pending_partner || null };
+  },
+
+  async "POST /nests/{id}/build/claim"({ id }){
+    this.need();
+    return await this.takeLock(id);
+  },
+  async "POST /nests/{id}/build/release"({ id }){
+    this.need();
+    return await this.dropLock(id);
   },
 
   async "POST /nests/{id}/leave"({ id }){

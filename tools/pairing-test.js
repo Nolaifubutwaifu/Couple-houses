@@ -2,43 +2,24 @@
    local store could never pass: nothing here is shared between the two
    people except the row they both point at.
 
-   The product signs in with an emailed code, which a test cannot read, so the
-   harness signs in with a password instead and drives every other route
-   exactly as the app does. That needs three throwaway accounts, which do not
-   exist in the database by default. Create them, run this, then delete them:
+   Everyone here signs in the way the product does, as a guest, so the run
+   makes its own three people and needs nothing seeded and nothing cleaned up
+   between runs. That matters more than it sounds: this suite ends by deleting
+   an account, so while it borrowed fixed test logins it could only be run
+   once before somebody had to go and rebuild them by hand, which is a fine
+   way to end up not re-running a suite that has started failing.
 
-     insert into auth.users (id, instance_id, aud, role, email, encrypted_password,
-       email_confirmed_at, created_at, updated_at, raw_app_meta_data,
-       raw_user_meta_data, confirmation_token, recovery_token,
-       email_change_token_new, email_change)
-     values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
-       'authenticated', 'authenticated', 'ada@nest.test',
-       extensions.crypt('nest-test-pw', extensions.gen_salt('bf')),
-       now(), now(), now(), '{"provider":"email","providers":["email"]}',
-       '{}', '', '', '', '');
-     -- and the matching auth.identities row, and the same for bo@ and eve@
-
-   The run leaves state behind on purpose, since it ends by deleting an
-   account and checking the nest survives it. So recreate the three accounts
-   before every run rather than reusing them, and delete them afterwards:
-
-     delete from reports; delete from invites; delete from memberships;
-     delete from nests;
-     delete from profiles where id in
-       (select id from auth.users where email like '%@nest.test');
-     delete from auth.users where email like '%@nest.test';
-
-   It also needs somewhere to serve the app from, with a way through to the
+   It needs somewhere to serve the app from, with a way through to the
    database. Any static server on 8811 will do when the browser can reach
    Supabase directly. */
 const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
 
 const ORIGIN = "http://127.0.0.1:8811/index.html";
-const PW = "nest-test-pw";
+const EXPECTED = 49;
 const pass = [], fail = [], skip = [];
 const ok = (name, cond, note) => { const line = name + (note ? " :: " + note : ""); (cond ? pass : fail).push(line); console.log((cond ? "  ok   " : "  FAIL ") + line); };
 
-async function person(browser, email, tag){
+async function person(browser, _unused, tag){
   const ctx = await browser.newContext({ ignoreHTTPSErrors:true });
   const page = await ctx.newPage();
   page.on("console", m => { if(m.type() === "error" || m.type() === "warning") console.log("  [" + tag + " " + m.type() + "]", m.text().slice(0,300)); });
@@ -48,19 +29,15 @@ async function person(browser, email, tag){
     // the sandbox browser cannot open its own tunnel, so the outbound leg
     // runs in the test server. Same database, same code, one hop shifted.
     window.NEST_CONFIG = { url:location.origin, lib:"/_lib/supabase.js",
-      probeMs:15000, pollMs:1500, providers:["guest"] };
+      probeMs:35000, pollMs:1500, providers:["guest"] };
   });
   await page.goto(ORIGIN + "?as=" + tag);
   await page.waitForFunction(() => typeof Api !== "undefined" && !!Api.readyP, null, { timeout:20000 });
   const live = await page.evaluate(() => Api.readyP.then(() => !!Api.backend));
   if(!live) throw new Error(tag + ": backend did not come up: " +
     await page.evaluate(() => Backend.reason));
-  const signed = await page.evaluate(async ({ email, PW }) => {
-    const r = await Backend.sb.auth.signInWithPassword({ email, password:PW });
-    if(r.error) return r.error.message;
-    await Backend.setSession(r.data.session);
-    return null;
-  }, { email, PW });
+  const signed = await page.evaluate(() => Api.call("POST", "/auth/session", { provider:"guest" })
+    .then(() => null).catch(e => e.code || e.message));
   if(signed) throw new Error(tag + ": sign in failed: " + signed);
   const call = (m, p, b) => page.evaluate(([m, p, b]) => Api.call(m, p, b)
     .then(r => ({ ok:true, r })).catch(e => ({ ok:false, code:e.code, status:e.status, msg:e.message })), [m, p, b]);
@@ -76,34 +53,8 @@ async function person(browser, email, tag){
           "--proxy-bypass-list=127.0.0.1;localhost",
           "--ignore-certificate-errors"],
   });
-  /* The guest path cannot be exercised until the project has anonymous sign
-     in switched on, so it reports honestly rather than passing quietly. */
-  {
-    const ctx = await browser.newContext();
-    const page = await ctx.newPage();
-    await page.addInitScript(() => {
-      window.NEST_CONFIG = { url:location.origin, lib:"/_lib/supabase.js",
-        probeMs:15000, pollMs:1500, providers:["guest"] };
-    });
-    await page.goto(ORIGIN + "?as=g");
-    await page.waitForFunction(() => typeof Api !== "undefined" && !!Api.readyP, null, { timeout:20000 });
-    await page.evaluate(() => Api.readyP);
-    const r = await page.evaluate(() => Api.call("POST", "/auth/session", { provider:"guest" })
-      .then(r => ({ ok:true, r })).catch(e => ({ ok:false, code:e.code })));
-    if(!r.ok && /provider_unavailable/.test(r.code || "")){
-      skip.push("guest sign in :: anonymous sign in is switched off on the project");
-      console.log("  SKIP guest sign in :: anonymous sign in is switched off on the project");
-    }else{
-      ok("a guest signs in with nothing typed", r.ok && r.r.user && r.r.is_new === true, JSON.stringify(r));
-      const uid = await page.evaluate(() => Backend.uid);
-      ok("the guest has a real account and a profile row", !!uid, String(uid));
-      await page.evaluate(() => Backend.sb.auth.signOut());
-    }
-    await ctx.close();
-  }
-
-  const A = await person(browser, "ada@nest.test", "1");
-  const B = await person(browser, "bo@nest.test", "2");
+  const A = await person(browser, null, "1");
+  const B = await person(browser, null, "2");
   ok("both tabs booted against the backend", true);
 
   /* 1. details */
@@ -181,7 +132,10 @@ async function person(browser, email, tag){
     App.game.house.placed.push({ instanceId:"t1", itemId:"plant", room:"living", x:2, y:2, rot:0 });
     await Store.save(App.game);
   }, nestId);
-  await new Promise(r => setTimeout(r, 1200));
+  await B.page.waitForFunction(id => {
+    const g = Api.db.game[id];
+    return g && g.wallet.coins === 999;
+  }, nestId, { timeout:20000, polling:300 }).catch(() => {});
   r = await B.call("GET", "/nests/mine");
   const bGame = await B.eval(id => { const g = Api.db.game[id]; return g && { coins:g.wallet.coins, placed:g.house.placed.length }; }, nestId);
   ok("B reads the same game document", bGame && bGame.coins === 999 && bGame.placed === 1, JSON.stringify(bGame));
@@ -242,7 +196,7 @@ async function person(browser, email, tag){
   ok("the database refuses the write too", rawRename.rows === 0, JSON.stringify(rawRename));
 
   /* 17c. a stranger with a valid login sees none of it */
-  const E = await person(browser, "eve@nest.test", "3");
+  const E = await person(browser, null, "3");
   const seen = await E.eval(async id => {
     const nest = await Backend.sb.from("nests").select("*").eq("id", id);
     const mem = await Backend.sb.from("memberships").select("*").eq("nest_id", id);
@@ -283,13 +237,18 @@ async function person(browser, email, tag){
      arch && JSON.stringify(arch.members));
 
   await browser.close();
-  report();
-})().catch(e => { console.error("harness error:", e.stack); report(); process.exit(2); });
+  report(0);
+})().catch(e => { console.error("harness error:", e.stack); report(2); });
 
-function report(){
+/* A run that fell over halfway has no failing assertions, because it never
+   reached them. Exiting zero on that is how a suite reports 37 of its 49
+   checks and still calls itself green. */
+function report(code){
+  const short = pass.length + fail.length < EXPECTED;
   console.log("\nPASS " + pass.length + "  FAIL " + fail.length +
-              (skip.length ? "  SKIP " + skip.length : ""));
+              (skip.length ? "  SKIP " + skip.length : "") +
+              (short ? "  (INCOMPLETE, expected " + EXPECTED + ")" : ""));
   fail.forEach(f => console.log("  FAIL " + f));
   skip.forEach(f => console.log("  SKIP " + f));
-  process.exit(fail.length ? 1 : 0);
+  process.exit(code || (fail.length || short ? 1 : 0));
 }

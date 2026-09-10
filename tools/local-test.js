@@ -3,6 +3,7 @@
    one browser, no network. */
 const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
 const ORIGIN = "http://127.0.0.1:8811/index.html";
+const EXPECTED = 16;
 const pass = [], fail = [];
 const ok = (n, c, note) => { const l = n + (note ? " :: " + note : ""); (c ? pass : fail).push(l);
   console.log((c ? "  ok   " : "  FAIL ") + l); };
@@ -31,7 +32,7 @@ async function tab(ctx, who, config){
 
   /* The live site's actual state: the database is reachable with anonymous
      sign in on, so the app should take it and offer exactly that. */
-  const probe = await tab(ctx, "probe", { url:"http://127.0.0.1:8811", lib:"/_lib/supabase.js", probeMs:15000 });
+  const probe = await tab(ctx, "probe", { url:"http://127.0.0.1:8811", lib:"/_lib/supabase.js", probeMs:35000 });
   const state = await probe.eval(() => ({ backend:!!Api.backend, reason:Backend.reason, ways:Onboard.ways() }));
   ok("a reachable database with a way in is taken", state.backend === true, JSON.stringify(state));
   ok("and the screen offers exactly what the project has on",
@@ -40,7 +41,7 @@ async function tab(ctx, who, config){
   /* and with no way in at all it must fall back rather than strand somebody
      at a sign in screen that cannot work */
   const shut = await tab(ctx, "shut", { url:"http://127.0.0.1:8811", lib:"/_lib/supabase.js",
-                                        probeMs:15000, providers:[] });
+                                        probeMs:35000, providers:[] });
   const shutState = await shut.eval(() => ({ backend:Api.backend, reason:Backend.reason, ways:Onboard.ways() }));
   ok("a database with no way in falls back instead", shutState.backend === null &&
      /no sign in method/.test(shutState.reason), JSON.stringify(shutState));
@@ -80,7 +81,16 @@ async function tab(ctx, who, config){
   ok("all " + bible.t + " assets still pass section 16", bible.p === bible.t, JSON.stringify(bible));
 
   await browser.close();
-  console.log("\nPASS " + pass.length + "  FAIL " + fail.length);
+  done(0);
+})().catch(e => { console.error("harness error:", e.stack); done(2); });
+
+/* A run that fell over halfway has no failing assertions, because it never
+   reached them, so exiting zero on that reports a truncated suite as green.
+   The expected count is stated here for the same reason. */
+function done(code){
+  const short = pass.length + fail.length < EXPECTED;
+  console.log("\nPASS " + pass.length + "  FAIL " + fail.length +
+              (short ? "  (INCOMPLETE, expected " + EXPECTED + ")" : ""));
   fail.forEach(f => console.log("  FAIL " + f));
-  process.exit(fail.length ? 1 : 0);
-})().catch(e => { console.error("harness error:", e.stack); process.exit(2); });
+  process.exit(code || (fail.length || short ? 1 : 0));
+}

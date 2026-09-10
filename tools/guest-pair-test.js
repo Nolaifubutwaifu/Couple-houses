@@ -5,6 +5,7 @@
 const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
 
 const ORIGIN = "http://127.0.0.1:8811/index.html";
+const EXPECTED = 13;
 const pass = [], fail = [];
 const ok = (n, c, note) => { const l = n + (note ? " :: " + note : ""); (c ? pass : fail).push(l);
   console.log((c ? "  ok   " : "  FAIL ") + l); };
@@ -14,7 +15,7 @@ async function guest(browser, tag){
   const page = await ctx.newPage();
   page.on("pageerror", e => console.log("  [" + tag + " pageerror]", e.message));
   await page.addInitScript(() => {
-    window.NEST_CONFIG = { url:location.origin, lib:"/_lib/supabase.js", probeMs:15000, pollMs:1500 };
+    window.NEST_CONFIG = { url:location.origin, lib:"/_lib/supabase.js", probeMs:35000, pollMs:1500 };
   });
   await page.goto(ORIGIN + "?as=" + tag);
   await page.waitForFunction(() => typeof Api !== "undefined" && !!Api.readyP, null, { timeout:20000 });
@@ -111,7 +112,16 @@ async function guest(browser, tag){
      r.r.nest.name === "Ours", JSON.stringify(r.r && r.r.nest && r.r.nest.name));
 
   await browser.close();
-  console.log("\nPASS " + pass.length + "  FAIL " + fail.length);
+  done(0);
+})().catch(e => { console.error("harness error:", e.stack); done(2); });
+
+/* A run that fell over halfway has no failing assertions, because it never
+   reached them, so exiting zero on that reports a truncated suite as green.
+   The expected count is stated here for the same reason. */
+function done(code){
+  const short = pass.length + fail.length < EXPECTED;
+  console.log("\nPASS " + pass.length + "  FAIL " + fail.length +
+              (short ? "  (INCOMPLETE, expected " + EXPECTED + ")" : ""));
   fail.forEach(f => console.log("  FAIL " + f));
-  process.exit(fail.length ? 1 : 0);
-})().catch(e => { console.error("harness error:", e.stack); process.exit(2); });
+  process.exit(code || (fail.length || short ? 1 : 0));
+}

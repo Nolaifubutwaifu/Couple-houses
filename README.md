@@ -298,6 +298,27 @@ test that could have caught it. It then found three more:
   furniture disappearing seconds after they place it. Strictly newer now, and
   a poll that overlaps a write stands aside
 
+**One house, and the revisions that make it one.** Two clients each counting
+their own revisions is not a scheme, it is two documents wearing the same
+name: both start at nothing, both call their first save revision one, and
+from then on neither ever looks newer than the other, so the two rooms drift
+apart and nothing brings them back. That is what "we are in the same room and
+I cannot see your sofa" actually was. The database issues the revision now,
+and a save that is not based on the current one is refused rather than
+allowed to land on top. A refused save is rebased: `mergeGame` in
+`src/app.js` takes what this device started from, what it has now, and what is
+really stored, and moves each field by the amount this device moved it, so
+coins add up, furniture is added and removed by identity rather than replaced
+wholesale, and a room either of them paid for stays unlocked. Nothing
+overwrites a field it did not change.
+
+**One pair of hands at a time.** Two people dragging furniture around the same
+room at once is not collaboration, it is a fight the loser does not know they
+are in. The build screen is a turn: taking it claims a short hold in the
+database, the other person sees "Ada is arranging the room" and watches the
+dome update as it happens, and the hold expires by itself so a partner who
+puts their phone down does not lock the other out of their own house.
+
 **What is still not right.** The game document is client authoritative: a
 determined player can write themselves any number of hearts. That is fine for
 a prototype where the only thing to win is your own house, and it is the next
@@ -385,6 +406,9 @@ mesh. Balance numbers all sit in one `BALANCE` object in `src/games.js`.
 - `docs/backend.sql` — the whole database in one runnable file
 - `tools/artifact_build.mjs` — inlines the sources and points three.js at a CDN
   for publishing as a hosted page. `node tools/artifact_build.mjs`
+- `tools/run-all.js` — every suite, two at a time, with one summary
+- `tools/room-sync-test.js` — both people already in the room, which is the
+  case the others all missed
 - `tools/screen-pair-test.js` — real taps on real buttons, the harness polls
   nothing, which is what catches a screen that never asks
 - `tools/guest-pair-test.js` — the path a couple takes, two guests and no

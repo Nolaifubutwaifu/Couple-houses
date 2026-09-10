@@ -10,6 +10,7 @@ const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // no I L O 0 1
 const INVITE_TTL = 7 * 24 * 3600 * 1000;
 const EMAIL_CODE_TTL = 10 * 60 * 1000;
 const MIN_AGE = 16;
+const BUILD_LOCK_MS = 40 * 1000;
 const LATENCY = 220;                     // enough to make pending states real
 
 const now = () => Date.now();
@@ -353,6 +354,29 @@ const routes = {
     saveDB();
     Realtime.emit("nest.named", { nest_id:nest.id, name:n });
     return { nest };
+  },
+
+  /* One pair of hands at a time. With no backend the two players are two tabs
+     of one browser, so the lock lives in the shared store and behaves exactly
+     as the database one does, expiry included. */
+  "POST /nests/{id}/build/claim"({ id }){
+    const nest = DB.nests[id];
+    if(!nest) throw apiError(404, "no_nest");
+    const held = nest.builder && nest.builder_until > now() && nest.builder !== Session.userId;
+    if(held) return { mine:false, builder:nest.builder,
+                      builder_name:nameOf(nest.builder), until:nest.builder_until };
+    nest.builder = Session.userId;
+    nest.builder_until = now() + BUILD_LOCK_MS;
+    saveDB();
+    Realtime.emit("build.lock", { nest_id:id, builder:nest.builder, mine:false });
+    return { mine:true, builder:nest.builder, until:nest.builder_until };
+  },
+  "POST /nests/{id}/build/release"({ id }){
+    const nest = DB.nests[id];
+    if(!nest) throw apiError(404, "no_nest");
+    if(nest.builder === Session.userId){ nest.builder = null; nest.builder_until = null; saveDB(); }
+    Realtime.emit("build.lock", { nest_id:id, builder:null, mine:false });
+    return { released:true };
   },
 
   "POST /nests/{id}/settings"({ id, base_material, terrain_type }){

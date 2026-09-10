@@ -85,6 +85,106 @@ function newGame(nest){
   };
 }
 
+/* Three way merge, for the save the database refused because the other person
+   got there first. The three documents are what this device started from, what
+   it has now, and what is actually stored, and every field in the game has an
+   obvious right answer given all three: coins move by the amount this device
+   moved them, furniture is added and removed rather than replaced wholesale, a
+   room that either of them unlocked stays unlocked. Last write wins is what
+   makes one partner's afternoon disappear, so nothing here overwrites a field
+   it did not change. */
+function mergeGame(base, mine, theirs){
+  if(!base) return theirs;                      // nothing to rebase, take the truth
+  const out = JSON.parse(JSON.stringify(theirs));
+  const delta = (b, m) => (m || 0) - (b || 0);
+
+  out.wallet.coins = Math.max(0, (theirs.wallet.coins || 0) + delta(base.wallet.coins, mine.wallet.coins));
+  out.wallet.lifetimeEarned = (theirs.wallet.lifetimeEarned || 0) +
+    delta(base.wallet.lifetimeEarned, mine.wallet.lifetimeEarned);
+  out.bond = (theirs.bond || 0) + delta(base.bond, mine.bond);
+  ["gamesPlayed", "duelsPlayed"].forEach(k => {
+    out.stats[k] = (theirs.stats[k] || 0) + delta(base.stats[k], mine.stats[k]);
+  });
+  out.stats.bestDuel = Math.max(theirs.stats.bestDuel || 0, mine.stats.bestDuel || 0);
+
+  // a room either of them paid for is unlocked for both
+  Object.keys(mine.house.rooms).forEach(id => {
+    if(mine.house.rooms[id].unlocked) out.house.rooms[id] = { unlocked:true };
+  });
+
+  // furniture by identity: what this device added, minus what it took away
+  const byId = arr => { const m = {}; (arr || []).forEach(p => { m[p.instanceId] = p; }); return m; };
+  const baseP = byId(base.house.placed), mineP = byId(mine.house.placed);
+  const merged = byId(theirs.house.placed);
+  Object.keys(baseP).forEach(id => { if(!mineP[id]) delete merged[id]; });   // removed here
+  Object.keys(mineP).forEach(id => { merged[id] = mineP[id]; });             // added or moved here
+  out.house.placed = Object.keys(merged).map(id => merged[id]);
+
+  const baseI = (base.house.inventory || []).slice(), mineI = mine.house.inventory || [];
+  const took = baseI.filter(x => mineI.indexOf(x) < 0);
+  out.house.inventory = (theirs.house.inventory || []).slice();
+  took.forEach(x => { const at = out.house.inventory.indexOf(x); if(at >= 0) out.house.inventory.splice(at, 1); });
+  mineI.filter(x => baseI.indexOf(x) < 0).forEach(x => out.house.inventory.push(x));
+
+  // the streak belongs to the day, so whichever record is further along wins
+  if((mine.streak.count || 0) > (theirs.streak.count || 0) ||
+     (mine.streak.day && mine.streak.day > (theirs.streak.day || ""))) out.streak = mine.streak;
+  if(mine.daily.day && mine.daily.day >= (theirs.daily.day || "")){
+    out.daily = { day:mine.daily.day,
+      duel:Math.max(mine.daily.duel || 0, theirs.daily.day === mine.daily.day ? theirs.daily.duel || 0 : 0),
+      memory:Math.max(mine.daily.memory || 0, theirs.daily.day === mine.daily.day ? theirs.daily.memory || 0 : 0) };
+  }
+  if(mine.showcase.published !== base.showcase.published ||
+     mine.showcase.tagline !== base.showcase.tagline) out.showcase = mine.showcase;
+  if(mine.ritualLog && (!theirs.ritualLog || mine.ritualLog.length > theirs.ritualLog.length))
+    out.ritualLog = mine.ritualLog;
+  out.ceremony_pending = mine.ceremony_pending && theirs.ceremony_pending;
+  return out;
+}
+
+/* Only one pair of hands at a time. Two people dragging furniture around the
+   same room at once is not collaboration, it is a fight the loser does not
+   know they are in, so the build tab is a turn rather than a free for all.
+   The hold expires by itself, because a partner who closes the tab halfway
+   through arranging must not lock the other one out of their own house. */
+const Build = {
+  mine:false, builder:null, name:null, until:0, beat:null,
+  get heldByPartner(){ return !!this.builder && !this.mine; },
+  apply(r){
+    this.mine = !!(r && r.mine);
+    this.builder = (r && r.builder) || null;
+    this.name = (r && r.builder_name) || this.name;
+    this.until = (r && (typeof r.until === "number" ? r.until : Date.parse(r.until))) || 0;
+    return this;
+  },
+  async take(){
+    if(!App.me || !App.me.nest) return this;
+    try{ this.apply(await Api.call("POST", "/nests/" + App.me.nest.id + "/build/claim", {})); }
+    catch(err){ this.mine = false; }
+    this.pump();
+    return this;
+  },
+  async release(){
+    this.stop();
+    if(!this.mine || !App.me || !App.me.nest) return;
+    this.mine = false; this.builder = null;
+    try{ await Api.call("POST", "/nests/" + App.me.nest.id + "/build/release", {}); }
+    catch(err){ /* it expires on its own */ }
+  },
+  /* the hold is short so a dead tab frees it quickly, which means a live one
+     has to keep saying it is still here */
+  pump(){
+    this.stop();
+    if(!this.mine) return;
+    this.beat = setInterval(() => {
+      if(route.tab !== "build" || !this.mine) return this.release();
+      Api.call("POST", "/nests/" + App.me.nest.id + "/build/claim", {})
+        .then(r => this.apply(r)).catch(() => {});
+    }, 15000);
+  },
+  stop(){ clearInterval(this.beat); this.beat = null; },
+};
+
 const App = {
   me:null, get game(){ return state; },
 
@@ -120,7 +220,27 @@ const App = {
       if(!state || msg.payload.nest_id !== state.nest_id) return;
       if(msg.type === "game.changed"){
         const fresh = Api.db.game[state.nest_id];
-        if(fresh){ state = fresh; state.couple = this.couple(this.me); refreshWorld(); render(); }
+        if(fresh){
+          state = fresh;
+          state.couple = this.couple(this.me);
+          /* If the document that just arrived already accounts for the thing
+             in your hands, your hands are empty, whatever they were doing a
+             moment ago. Without this the same piece exists twice: once in the
+             room and once still held, and putting it back into storage makes
+             a second copy of a thing there is only one of. */
+          if(held && (fresh.house.placed.some(p => p.instanceId === held.instanceId) ||
+                      fresh.house.inventory.some(i => i.instanceId === held.instanceId))){
+            held = null;
+            Diorama.setHeld(null);
+          }
+          refreshWorld(); render();
+        }
+      }
+      if(msg.type === "build.lock"){
+        Build.apply({ mine:msg.payload.builder === Api.Session.userId,
+                      builder:msg.payload.builder, builder_name:msg.payload.builder_name,
+                      until:msg.payload.until });
+        if(route.tab === "build") render();
       }
       if(msg.type === "nest.named"){ this.me.nest.name = msg.payload.name; render(); }
       if(msg.type === "nest.frozen" && msg.payload.by !== Api.Session.userId){
@@ -341,7 +461,15 @@ function toast(msg){
 }
 function go(tab, view){
   if(tab !== "show" && viewingLot){ viewingLot = null; refreshWorld(); }
+  const was = route.tab;
   route = { tab, view:view || null };
+  if(tab === "build" && was !== "build"){
+    if(held){ held = null; Diorama.setHeld(null); }
+    Build.take().then(render);
+  }else if(was === "build" && tab !== "build"){
+    if(held){ held = null; Diorama.setHeld(null); }
+    Build.release();
+  }
   const sheet = $("#sheet");
   if(sheet) sheet.scrollTop = 0;
   render();
@@ -395,6 +523,23 @@ function screenPlay(root){
 }
 
 function screenBuild(root){
+  /* Whose turn it is, said plainly and before anything else on the screen, so
+     nobody discovers it by tapping and having nothing happen. */
+  if(Build.heldByPartner){
+    const who = Build.name || "Your partner";
+    const card = el(`<div class="card">
+      <p class="h">${esc(who)} is arranging the room</p>
+      <p class="s dim">You can watch. The dome updates as they move things. It comes back
+        to you when they leave the build screen, or shortly after they put the phone down.</p>
+      <button class="btn" id="build-retry" style="margin-top:12px">Ask for a turn</button></div>`);
+    card.querySelector("#build-retry").onclick = async () => {
+      const r = await Build.take();
+      toast(r.mine ? "Your turn" : (Build.name || "Your partner") + " is still arranging");
+      render();
+    };
+    root.appendChild(card);
+    return;
+  }
   const chips = el(`<div class="chips"></div>`);
   ROOMS.forEach(r => {
     const open = state.house.rooms[r.id].unlocked;
@@ -589,6 +734,7 @@ addEventListener("DOMContentLoaded", async function boot(){
   Diorama.init($("#stage"));
   Diorama.onPlace = spot => {
     if(!held || !paired()) return;
+    if(!Build.mine) return toast(Build.name ? Build.name + " is arranging the room" : "Tap Build to take a turn");
     state.house.placed.push({ instanceId:held.instanceId, itemId:held.itemId, room:spot.room, x:spot.x, y:spot.y, rot:held.rot });
     Diorama.addProp(state.house.placed[state.house.placed.length - 1]);
     held = null;
@@ -597,6 +743,7 @@ addEventListener("DOMContentLoaded", async function boot(){
   };
   Diorama.onPick = p => {
     if(held || viewingLot || !paired()) return;
+    if(!Build.mine) return toast(Build.name ? Build.name + " is arranging the room" : "Tap Build to take a turn");
     state.house.placed = state.house.placed.filter(q => q.instanceId !== p.instanceId);
     Diorama.removeProp(p.instanceId);
     held = { instanceId:p.instanceId, itemId:p.itemId, rot:p.rot };
