@@ -50,7 +50,7 @@ follow the real calendar month.
 | Game | Cap | How it pays |
 | --- | --- | --- |
 | Today's question | once a day | one question, the same one on both phones. You answer your own row, their answer stays hidden until yours is in, then both are revealed together. 30 coins plus 3 a day of streak capped at 60, and a bond. This is the only thing that grows the streak. |
-| Trivia duel | once a day | one answers 6 questions about themselves, passes the phone, the other guesses. 9 coins a match, and no sweep bonus: it runs on one device, so a bonus for a clean sweep paid a single person three days of ritual for forty seconds of tapping through both halves |
+| Trivia duel | once a day | one answers 6 questions about themselves on their phone, the other guesses them on theirs. 9 coins a match, no sweep bonus. The round lives in the shared document and each of you only ever sees your own half of it, so it cannot be played alone |
 | Memory match | twice a day | solo pairs, played with the actual props. 30 coins at par, floor of 8 |
 
 **The caps are the point.** With no limits the whole catalogue could be bought
@@ -93,8 +93,8 @@ as thin for their class rather than failing:
 the warm lamp at 144 triangles and the wardrobe at 1594. That is a finding about
 the bible's floors, not about the props. The triangle ranges in section 6 assume
 two bevel segments everywhere; parts under 85mm here use a single segment, which
-is invisible at any real zoom and cuts the catalogue from roughly 90,000
-triangles to 43,000. A fully furnished six room home renders at about 96,000 against the section 6
+is invisible at any real zoom and cuts the catalogue by about a third, to
+73,000 triangles measured over all 50 props. A fully furnished six room home renders at about 96,000 against the section 6
 budget of 100,000, which is tight enough to be a finding in itself: at this
 catalogue size the budget and the room count are in tension, and the real build
 will want instancing or another pass at the bevel segments.
@@ -135,7 +135,10 @@ Honest list, so nobody mistakes a shortcut for a decision.
 ## Onboarding, authentication and pairing
 
 Built to the onboarding spec. The flow exists to get two people into one nest,
-so the invite is the conversion event and the solo state is deliberately inert.
+so the invite is the conversion event. The solo state earns nothing and owns
+nothing, but it is no longer empty: a founder waiting on their own can look
+through the whole workshop and sketch out where things go, which is something
+to send the person they are trying to persuade and something to come back to.
 
 **Try the pairing for real.** Open the page, go through to the invite code, then
 open a second browser tab on the same page with `?j=YOURCODE` on the end. The
@@ -160,12 +163,17 @@ measures about 20 seconds against the spec's 45.
   store, so a second tab racing the same code loses.
 - Under sixteen cannot create or join, and the block has no retry loop back to
   the date field, because a retry loop just teaches the workaround.
-- A solo user earns nothing and places nothing. That is structural, since the
-  main app is only reachable through a completed pairing, and there is a second
-  guard in `earn`, `spend` and the placement handlers so a future screen cannot
-  route around it.
-- The waiting state allows exactly two changes, the base material and the
-  terrain, neither of which touches the interior.
+- A solo user earns nothing, buys nothing and places nothing. That is
+  structural, since the main app is only reachable through a completed pairing,
+  and there is a second guard in `earn`, `spend` and the placement handlers so a
+  future screen cannot route around it.
+- What a solo founder can do is plan. The workshop is readable with no button
+  on it to press, and the first room can be sketched out as positions rather
+  than purchases. The sketch is drawn into the dome as outlines, it survives a
+  reload, and when the partner arrives they are told whose it is and given one
+  tap to throw it out.
+- The waiting state allows exactly two changes to the nest itself, the base
+  material and the terrain, neither of which touches the interior.
 - Nudges fire at 24 hours, 72 hours and 7 days, stop at three, and only ever
   reach the founder. Nothing is ever sent to the person who has not opted in.
 - The ceremony flag goes up at pairing and only comes down when the sequence has
@@ -337,8 +345,10 @@ matter most, since they are the ones a real couple performs. `node
 tools/local-test.js` runs the same flow with the backend switched off, so the
 fallback is a tested path rather than a hope.
 
-All three need a static server on 8811 serving this directory; the two against
-the database also need the browser to be able to reach Supabase.
+All of them need a static server on 8811 serving this directory; the two against
+the database also need the browser to be able to reach Supabase. The four client
+suites (`handoff`, `entry`, `two-phones`, `solo`) run entirely on the local store, so
+they hold with no network at all.
 
 ## Leaving, deletion and moderation
 
@@ -418,6 +428,17 @@ mesh. Balance numbers all sit in one `BALANCE` object in `src/games.js`.
 - `tools/pairing-test.js` — two browsers, one database, every rule and every
   thing a stranger must not be able to reach
 - `tools/local-test.js` — the same flow with no backend at all
+- `tools/handoff-test.js` — the handover from onboarding to the app: the
+  tutorial borrows the next tap and gives it back, the first ritual asks the
+  day's question, and a save carrying repeated ids is repaired on load
+- `tools/entry-test.js` — the way in: the age gate decides before it writes and
+  keeps nothing it blocks, the block screen is not a brick, and an invite link
+  says who sent it
+- `tools/two-phones-test.js` — the ritual and the duel across two phones: you
+  cannot play your partner's half of either, and their half reaches their
+  screen without anybody reloading
+- `tools/solo-test.js` — what a founder can do alone, and the more important
+  half, everything they still cannot
 
 ## Delivery targets for the real build
 

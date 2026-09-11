@@ -78,6 +78,11 @@ function newGame(nest){
     bond:0,
     streak:{ count:0, lastCheckIn:null, day:null, a:false, b:false, aAns:null, bAns:null },
     daily:{ day:null, duel:0, memory:0 },
+    /* The duel round is shared rather than per device, so each of you plays
+       your own half of it. The plan is what a founder laid out while they
+       were waiting on their own: positions, no purchase. */
+    duel:null,
+    plan:[],
     house:{ rooms, inventory:[], placed:[] },
     showcase:{ published:false, likesGiven:[], tagline:"" },
     stats:{ gamesPlayed:0, duelsPlayed:0, bestDuel:0 },
@@ -158,6 +163,13 @@ function mergeGame(base, mine, theirs){
       duel:Math.max(mine.daily.duel || 0, theirs.daily.day === mine.daily.day ? theirs.daily.duel || 0 : 0),
       memory:Math.max(mine.daily.memory || 0, theirs.daily.day === mine.daily.day ? theirs.daily.memory || 0 : 0) };
   }
+  /* The duel round is one round with two halves, and the only way it moves is
+     forward, so whichever copy has more of it filled in is the true one. */
+  const filled = d => !d ? -1 : (d.settled ? 1000 : 0) + (d.answers || []).length + (d.guesses || []).length;
+  if(filled(mine.duel) > filled(theirs.duel)) out.duel = mine.duel;
+  // the plan is one person's sketch, so the copy that changed is the copy
+  if(JSON.stringify(mine.plan || []) !== JSON.stringify(base.plan || [])) out.plan = mine.plan;
+
   if(mine.showcase.published !== base.showcase.published ||
      mine.showcase.tagline !== base.showcase.tagline) out.showcase = mine.showcase;
   if(mine.ritualLog && (!theirs.ritualLog || mine.ritualLog.length > theirs.ritualLog.length))
@@ -165,6 +177,29 @@ function mergeGame(base, mine, theirs){
   out.ceremony_pending = mine.ceremony_pending && theirs.ceremony_pending;
   return out;
 }
+
+/* Settings had nothing to say about notifications, which left the primer in
+   onboarding as the only time anybody was ever asked. Browsers do not let a
+   page take a permission back, so the honest switch is our own: the
+   permission if we do not have it, and a mute of our own that notify()
+   obeys if we do. */
+const Push = {
+  KEY:"nest.push_muted",
+  muted(){
+    try{ return localStorage.getItem(this.KEY) === "1"; }catch(err){ return false; }
+  },
+  setMuted(v){
+    try{ localStorage.setItem(this.KEY, v ? "1" : "0"); }catch(err){ /* memory only */ }
+  },
+  permission(){
+    try{ return typeof Notification === "undefined" ? "unsupported" : Notification.permission; }
+    catch(err){ return "unsupported"; }
+  },
+  async ask(){
+    try{ return (await Notification.requestPermission()) === "granted"; }
+    catch(err){ return false; }
+  },
+};
 
 /* Only one pair of hands at a time. Two people dragging furniture around the
    same room at once is not collaboration, it is a fight the loser does not
@@ -221,7 +256,16 @@ const App = {
   },
   saveGame(){
     Store.save(state);
-    Api.Realtime.emit("game.changed", { nest_id:state.nest_id });
+    /* The document rides with the message on the local store. localStorage is
+       not consistent across renderer processes on write, so a tab told to go
+       and re-read can still be looking at the value from before the write
+       that prompted the message: the other phone then sits on the ritual or
+       the duel showing a state that has already moved on, and only a reload
+       catches it up. A database does not have this problem, and its own
+       message carries no document because it has already pulled the row. */
+    Api.Realtime.emit("game.changed", Api.Realtime.usesLocalDB
+      ? { nest_id:state.nest_id, game:state }
+      : { nest_id:state.nest_id });
   },
 
   /* Onboarding hands over here, and only here. Reaching this point means
@@ -244,8 +288,10 @@ const App = {
     Api.Realtime.on(msg => {
       if(!state || msg.payload.nest_id !== state.nest_id) return;
       if(msg.type === "game.changed"){
-        const fresh = Api.db.game[state.nest_id];
+        // what arrived beats what the store has had time to tell us
+        const fresh = msg.payload.game || Api.db.game[state.nest_id];
         if(fresh){
+          Api.db.game[state.nest_id] = fresh;
           state = fresh;
           state.couple = this.couple(this.me);
           /* If the document that just arrived already accounts for the thing
@@ -283,10 +329,11 @@ const App = {
       togetherSince: new Date(me.nest.created_at).toISOString().slice(0, 10),
     };
   },
-  /* one notification path, so the nudge rules cannot be bypassed by a caller */
+  /* one notification path, so the nudge rules cannot be bypassed by a caller,
+     and one switch, so the setting cannot be bypassed either */
   notify(body){
     try{
-      if(typeof Notification !== "undefined" && Notification.permission === "granted"){
+      if(typeof Notification !== "undefined" && Notification.permission === "granted" && !Push.muted()){
         new Notification("NEST", { body });
         return;
       }
@@ -379,6 +426,32 @@ const App = {
       this.restart();
     };
     s.appendChild(out);
+
+    const perm = Push.permission();
+    const on = perm === "granted" && !Push.muted();
+    const note = el(`<div class="card">
+      <p class="h">Notifications</p>
+      <p class="s dim">${
+        perm === "unsupported" ? "This browser has no notifications, so there is nothing to turn on."
+        : perm === "denied" ? "Your browser is blocking them for this site. That switch is in the browser, not here, and we cannot turn it back on for you."
+        : on ? "On. We ping you when " + (other && other.user ? esc(other.user.display_name) : "your partner") +
+               " does something in your nest, or when it is time for your daily moment. Nothing else, ever."
+        : perm === "granted" ? "Muted. Nothing will be sent until you turn them back on."
+        : "Off. Turn them on and we will ping you when your partner does something, or when it is time for your daily moment."}</p>
+      ${perm === "unsupported" || perm === "denied" ? ""
+        : `<button class="btn" id="set-push" style="margin-top:12px">${
+            on ? "Mute notifications" : perm === "granted" ? "Turn them back on" : "Turn on notifications"}</button>`}</div>`);
+    if(note.querySelector("#set-push")) note.querySelector("#set-push").onclick = async () => {
+      if(on){ Push.setMuted(true); toast("Muted"); return this.openSettings(host); }
+      if(perm !== "granted"){
+        const got = await Push.ask();
+        Track.fire(got ? "push_granted" : "push_denied", { via:"settings" });
+        if(!got) toast("Your browser said no");
+      }
+      Push.setMuted(false);
+      this.openSettings(host);
+    };
+    s.appendChild(note);
 
     const help = el(`<div class="card">
       <p class="h">Help and legal</p>
@@ -508,6 +581,7 @@ function refreshWorld(){
     const names = viewingLot.partners.split(" and ");
     Diorama.setLot({ rooms, placed:viewingLot.placed }, { partnerA:names[0], partnerB:names[1] }, viewingLot.tagline);
     Diorama.applyState(viewingLot.stateId || "steady", season);
+    Diorama.setPlan(null);                      // somebody else's house, not your sketch
     return;
   }
   const nest = App.me && App.me.nest;
@@ -515,6 +589,16 @@ function refreshWorld(){
   const st = currentDomeState();
   Diorama.setLot(state.house, state.couple, SEASON_STATES[st].label.toLowerCase() + " · " + currentStreak() + " days");
   Diorama.applyState(st, season);
+  Diorama.setPlan(livePlan());
+}
+
+/* A planned spot stops being a plan the moment something real is standing on
+   it, so the sketch quietly empties itself as the room gets built rather than
+   needing to be tidied away. */
+function livePlan(){
+  if(!state || !state.plan || !state.plan.length) return [];
+  const taken = state.house.placed.map(p => p.room + ":" + p.x + ":" + p.y);
+  return state.plan.filter(p => taken.indexOf(p.room + ":" + p.x + ":" + p.y) < 0);
 }
 
 /* ---- ui helpers ---- */
@@ -685,12 +769,34 @@ function screenBuild(root){
     root.appendChild(strip);
   }
 
+  /* Whatever the founder sketched out while they were waiting on their own is
+     standing in the room as an outline. It is not a purchase and not a
+     decision: it is one person saying here is what I was thinking. */
+  const plan = livePlan();
+  if(plan.length){
+    const names = App.me && App.me.members.find(m => m.role === "founder");
+    const who = names && names.user ? names.user.display_name : state.couple.partnerA;
+    const card = el(`<div class="card">
+      <p class="h">The plan from while you waited</p>
+      <p class="s dim">${plan.length === 1 ? "One spot" : plan.length + " spots"} ${esc(who)}
+      sketched out before the two of you were here. Nothing was bought. Build over them,
+      or clear them and start from an empty floor.</p>
+      <button class="btn" id="plan-clear" style="margin-top:12px">Clear the plan</button></div>`);
+    card.querySelector("#plan-clear").onclick = () => {
+      state.plan = [];
+      save(); refreshWorld(); toast("Plan cleared"); render();
+    };
+    root.appendChild(card);
+  }
+
   root.appendChild(el(`<p class="lbl">Workshop</p>`));
   const grid = el(`<div class="grid"></div>`);
+  const planned = {};
+  plan.forEach(p => { planned[p.itemId] = (planned[p.itemId] || 0) + 1; });
   CATALOGUE.filter(i => i.room === shopFilter).forEach(item => {
     const afford = state.wallet.coins >= item.price;
     const c = el(`<div class="tile buy"><img src="${Offscreen.icon(item.id, 128)}" alt="">
-      <span>${esc(item.name)}</span><em>${item.charm} charm</em>
+      <span>${esc(item.name)}</span><em>${planned[item.id] ? "planned · " : ""}${item.charm} charm</em>
       <button class="btn sm ${afford ? "go" : ""}" ${afford ? "" : "disabled"}>${item.price}</button></div>`);
     c.querySelector("button").onclick = () => {
       if(!spend(item.price)) return toast("Not enough coins");

@@ -138,6 +138,8 @@ const Onboard = {
   go(step, ctx){
     clearToast();          // a toast belongs to the screen that raised it
     clearTimeout(this._escape);
+    Diorama.clearPlaceModes();   // and only the tap it pushes for itself
+    Diorama.setHeld(null);
     this.step = step;
     this.ctx = ctx || {};
     window.scrollTo(0, 0);
@@ -500,9 +502,135 @@ const Onboard = {
     const s = this.sheet(`<div class="ob-card ob-thin">
       <p class="s dim">Turn it, look around. You cannot build until your partner is here.</p>
       <button class="btn go" id="ob-inv">Invite my partner</button>
+      <button class="btn sm" id="ob-shop">See the workshop</button>
       <button class="ob-quiet" id="ob-back">Back</button></div>`);
     s.querySelector("#ob-inv").onclick = () => this.go("fork");
+    s.querySelector("#ob-shop").onclick = () => this.go("catalogue", { back:"tour" });
     s.querySelector("#ob-back").onclick = () => this.go("fork");
+  },
+
+  /* ---------- section 5, what a founder can do on their own ----------
+     A solo founder used to get a demo nest they could turn and a button to
+     invite somebody: nothing to show the person they are trying to persuade,
+     and no reason to keep the app installed while they wait. The rule that a
+     solo user earns nothing and buys nothing stays exactly where it is,
+     because the nest being the two of them is the product. What they can do
+     now is look through the whole workshop, and sketch out where things go.
+     Both of those are things to send someone, and things to come back to. */
+  s_catalogue(){
+    const back = this.ctx.back || "fork", home = this.ctx.home;
+    Diorama.orbit = 2 * Math.PI / 180;
+    this.top(`<div class="ob-tourbar">Nothing here is bought yet</div>`);
+    const s = this.sheet(`<div class="ob-card">
+      <p class="ob-h">The workshop</p>
+      <p class="s dim">Everything the two of you will be able to build, and what it costs.
+        Coins are earned together, so the prices start mattering the day your partner
+        arrives.</p>
+      <div id="ob-cat"></div>
+      <button class="btn go" id="ob-cat-back" style="margin-top:14px">Back</button></div>`);
+    const host = s.querySelector("#ob-cat");
+    const group = (label, items) => {
+      if(!items.length) return;
+      host.appendChild(el(`<p class="lbl">${esc(label)}</p>`));
+      const grid = el(`<div class="grid"></div>`);
+      items.forEach(item => grid.appendChild(el(`<div class="tile">
+        <img src="${Offscreen.icon(item.id, 128)}" alt="">
+        <span>${esc(item.name)}</span><em>${item.price} · ${item.charm} charm</em></div>`)));
+      host.appendChild(grid);
+    };
+    ROOMS.forEach(r => group(r.name + (r.price ? " · room unlocks at " + r.price : ""),
+      CATALOGUE.filter(i => i.room === r.id)));
+    group("Anywhere", CATALOGUE.filter(i => i.room === "any"));
+    s.querySelector("#ob-cat-back").onclick = () => this.go(back, home);
+  },
+
+  /* Positions, not purchases. Nothing here costs a coin, nothing here is
+     owned, and either of them can throw the whole thing out once they are
+     both in the room. */
+  s_plan(){
+    const me = this.ctx.home || this.ctx;
+    const nest = me.nest || this.ctx.nest;
+    App.ensureGame(nest.id);
+    if(!App.game.plan) App.game.plan = [];
+    this.showEmptyNest(nest);
+    Diorama.setZoomK(Diorama.ZOOM_K[1]);
+    Diorama.flyTo({ zoomK:Diorama.ZOOM_K[1], target:Diorama.roomCentre("living"), ms:700 });
+    Diorama.orbit = 0;
+    Diorama.setPlan(App.game.plan);
+    this.planHeld = this.planHeld || null;
+    this.renderPlan(me, nest);
+  },
+  renderPlan(me, nest){
+    const plan = App.game.plan;
+    this.top(`<div class="ob-tourbar">${this.planHeld ? "Tap the floor to put it down"
+      : "Pick something to place"}</div>`);
+    const held = this.planHeld;
+    const s = this.sheet(`<div class="ob-card">
+      <p class="ob-h">Plan the first room</p>
+      <p class="s dim">${plan.length ? (plan.length === 1 ? "One spot" : plan.length + " spots")
+        + " so far. " : ""}Nothing is bought and nothing is final. It is here so you have
+        something to show them, and something for the two of you to argue about later.</p>
+      ${held ? `<div class="held"><img src="${Offscreen.icon(held.itemId, 96)}" alt="">
+        <b>${esc(ITEM_BY_ID[held.itemId].name)}</b><span class="s">tap the ground</span>
+        <button class="btn sm" id="pl-turn">Turn</button>
+        <button class="btn sm" id="pl-drop">Put back</button></div>` : ``}
+      <p class="lbl">Living room</p>
+      <div class="strip" id="pl-strip"></div>
+      ${plan.length ? `<button class="ob-quiet" id="pl-clear">Start the plan again</button>` : ``}
+      <button class="btn go" id="pl-done" style="margin-top:10px">Done for now</button></div>`);
+
+    CATALOGUE.filter(i => i.room === "living").forEach(item => {
+      const c = el(`<button class="tile"><img src="${Offscreen.icon(item.id, 128)}" alt="">
+        <span>${esc(item.name)}</span><em>${item.price}</em></button>`);
+      c.onclick = () => {
+        this.planHeld = { itemId:item.id, rot:0 };
+        Diorama.setHeld(item.id, 0);
+        this.renderPlan(me, nest);
+      };
+      s.querySelector("#pl-strip").appendChild(c);
+    });
+    if(held){
+      s.querySelector("#pl-turn").onclick = () => {
+        this.planHeld.rot = (held.rot + 1) % 4;
+        Diorama.setHeld(held.itemId, this.planHeld.rot);
+        this.renderPlan(me, nest);
+      };
+      s.querySelector("#pl-drop").onclick = () => {
+        this.planHeld = null;
+        Diorama.setHeld(null);
+        this.renderPlan(me, nest);
+      };
+    }
+    if(plan.length) s.querySelector("#pl-clear").onclick = () => {
+      App.game.plan = [];
+      App.saveGame();
+      Diorama.setPlan([]);
+      this.renderPlan(me, nest);
+    };
+    s.querySelector("#pl-done").onclick = () => {
+      this.planHeld = null;
+      this.go("waiting", me);
+    };
+
+    Diorama.clearPlaceModes();
+    Diorama.pushPlaceMode(spot => {
+      const h = this.planHeld;
+      if(!h) return;
+      const f = Diorama.footprint(ITEM_BY_ID[h.itemId], h.rot);
+      const clash = App.game.plan.some(p => {
+        if(p.room !== spot.room) return false;
+        const pf = Diorama.footprint(ITEM_BY_ID[p.itemId], p.rot);
+        return spot.x < p.x + pf.w && spot.x + f.w > p.x &&
+               spot.y < p.y + pf.h && spot.y + f.h > p.y;
+      });
+      if(clash) return toast("Something is already planned there");
+      App.game.plan.push({ itemId:h.itemId, room:spot.room, x:spot.x, y:spot.y, rot:h.rot });
+      App.saveGame();
+      Diorama.setPlan(App.game.plan);
+      this.planHeld = null;
+      Diorama.setHeld(null);
+      this.renderPlan(me, nest);
+    });
   },
 
   /* ---------- S5a invite code ---------- */
@@ -943,12 +1071,19 @@ const Onboard = {
     const nest = me.nest || this.ctx.nest;
     Diorama.orbit = 1.5 * Math.PI / 180;
     this.showEmptyNest(nest);
+    // whatever they sketched out is standing in the room while they wait
+    App.ensureGame(nest.id);
+    Diorama.setPlan(App.game.plan);
     this.top(null);
     const invite = me.invite || this.ctx.invite;
     const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">Waiting for your partner to join.</p>
       <p class="s dim">A nest is not a nest with one person in it.</p>
       <button class="btn go" id="ob-resend">Send the invite again</button>
+      <div class="ob-row2">
+        <button class="btn sm" id="ob-plan">Plan the first room</button>
+        <button class="btn sm" id="ob-shop">See the workshop</button>
+      </div>
       <p class="lbl">The base and the ground, while you wait</p>
       <div class="ob-swatches" id="ob-base"></div>
       <div class="ob-swatches" id="ob-terr"></div>
@@ -958,6 +1093,8 @@ const Onboard = {
         : (await Api.call("POST", "/invites/" + (invite ? invite.code : "AAAAAA") + "/revoke", {})).invite;
       this.go("invite", { nest, invite:fresh });
     };
+    s.querySelector("#ob-plan").onclick = () => this.go("plan", { home:me, nest });
+    s.querySelector("#ob-shop").onclick = () => this.go("catalogue", { back:"waiting", home:me });
     s.querySelector("#ob-else").onclick = async () => {
       const r = await Api.call("POST", "/invites/" + (invite ? invite.code : "AAAAAA") + "/revoke", {});
       toast("Fresh code, clean slate");

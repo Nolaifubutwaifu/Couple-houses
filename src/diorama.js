@@ -285,10 +285,20 @@ const Diorama = {
       minZ = Math.min(minZ, r.oz); maxZ = Math.max(maxZ, r.oz + r.h * TILE);
     });
     if(minX > maxX){ minX = -1; maxX = 1; minZ = -1; maxZ = 1; }
+    const wasX = LOT.cx, wasZ = LOT.cz, wasR = LOT.radius;
     LOT.cx = (minX + maxX) / 2; LOT.cz = (minZ + maxZ) / 2;
     LOT.radius = Math.max(3.2, Math.hypot(maxX - LOT.cx, maxZ - LOT.cz) + 0.55);
     this.lot.position.set(0, 0, 0);
     this.target.set(LOT.cx, LOT.radius * 0.2, LOT.cz);
+    /* A fly still in flight is aimed at a point in a lot that has just
+       stopped existing: the demo lot the cold open was showing, or the
+       smaller one from before a room was unlocked. Letting it land drags the
+       camera off the house and leaves the dome hanging off the edge of the
+       screen for the rest of the session, which is what made the lot look
+       cropped every time somebody arrived from onboarding. The measurement
+       is the new framing, so anything aimed at the old one is dropped. */
+    if(Math.abs(wasX - LOT.cx) > 1e-6 || Math.abs(wasZ - LOT.cz) > 1e-6 ||
+       Math.abs(wasR - LOT.radius) > 1e-6) this.fly = null;
   },
   setLot(house, couple, streakLabel){
     this.unlocked = {};
@@ -371,6 +381,31 @@ const Diorama = {
     if(!instant) g.userData.anim = { t:0, dur:0.34, from:0.3 };   // section 11 placement
     return g;
   },
+  /* The plan a founder laid out while they were waiting on their own: where
+     things go rather than things. Translucent, never pickable, and cleared
+     the moment the real thing is standing in its place. */
+  setPlan(list){
+    if(!this.planGroup){ this.planGroup = new THREE.Group(); this.lot.add(this.planGroup); }
+    this.planGroup.clear();
+    (list || []).forEach(p => {
+      const item = ITEM_BY_ID[p.itemId];
+      if(!item) return;
+      const f = this.footprint(item, p.rot);
+      const at = this.tileToWorld(p.room, p.x, p.y, f.w, f.h);
+      const g = buildProp(p.itemId);
+      g.traverse(o => {
+        if(!o.material) return;
+        o.material = o.material.clone();
+        o.material.transparent = true;
+        o.material.opacity = 0.28;
+        o.material.depthWrite = false;
+      });
+      g.position.set(at.x, FLOOR_Y, at.z);
+      g.rotation.y = (p.rot || 0) * Math.PI / 2;
+      this.planGroup.add(g);
+    });
+  },
+
   removeProp(instanceId){
     const g = this.props[instanceId];
     if(!g) return;
