@@ -388,15 +388,23 @@ const BROUTES = {
        self declared minor's name and date of birth on the way to saying so is
        exactly what it promises not to do. */
     if(age < MIN_AGE){
-      this.ok(await this.sb.from("profiles").update({
-        display_name:null, birthdate:null, age_verified:false, age_blocked:true,
-      }).eq("id", this.uid).select().single(), "save_failed");
+      /* age_blocked is the whole of what a refusal leaves behind, and a
+         project that predates it has not got the column. Clearing the name
+         and the date is the part that must not be skipped, so that write goes
+         first and the flag is added on top where it exists. Without it the
+         block still refuses, it just stops surviving a second attempt, and
+         docs/backend.sql carries the one line that fixes that. */
+      await this.sb.from("profiles")
+        .update({ display_name:null, birthdate:null, age_verified:false })
+        .eq("id", this.uid);
+      await this.sb.from("profiles").update({ age_blocked:true }).eq("id", this.uid);
       throw apiError(403, "under_age", { min_age:MIN_AGE });
     }
     const p = this.ok(await this.sb.from("profiles").update({
-      display_name:name, birthdate, age_verified:true, age_blocked:false,
+      display_name:name, birthdate, age_verified:true,
       locale: navigator.language || "en",
     }).eq("id", this.uid).select().single(), "save_failed");
+    await this.sb.from("profiles").update({ age_blocked:false }).eq("id", this.uid);
     return { user:p };
   },
 

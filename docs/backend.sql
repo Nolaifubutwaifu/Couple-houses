@@ -27,6 +27,10 @@ create table profiles (
   display_name  text check (display_name is null or char_length(display_name) between 1 and 24),
   birthdate     date,
   age_verified  boolean not null default false,
+  /* Set when a birthdate failed the age check. The name and the date are not
+     kept in that case, so this boolean is the whole of what a refusal leaves
+     behind, and it is what stops the block being a retry loop. */
+  age_blocked   boolean not null default false,
   locale        text,
   push_token    text,
   blocked       text[] not null default '{}',
@@ -319,3 +323,9 @@ grant execute on function public.claim_invite(text)                   to authent
 grant execute on function public.confirm_invite(text, boolean)        to authenticated;
 grant execute on function public.freeze_nest(uuid, text)              to authenticated;
 grant execute on function public.delete_me()                          to authenticated;
+
+/* ---------------- bringing an existing project up to date ----------------
+   The file above is the whole database as it should be. A project that was
+   created before the age gate stopped keeping what it blocks needs one
+   column, and it is safe to run this on a project that already has it. */
+alter table profiles add column if not exists age_blocked boolean not null default false;
