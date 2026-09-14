@@ -167,7 +167,7 @@ create policy reports_read   on reports for select using (reported_by = auth.uid
    claimed a code could promote themselves past the confirmation. */
 
 /* ---------------- what a client may do ----------------
-   Six functions, matching six of the endpoints in src/api.js one for one.
+   Seven functions, matching seven of the endpoints in src/api.js one for one.
    Each raises the same string the screens already switch on. */
 
 create or replace function public.handle_new_user() returns trigger
@@ -230,6 +230,40 @@ begin
   end loop;
   raise exception 'invite_failed';
 end $$;
+
+/* Reading a code without spending it. The invites table is readable only by
+   the nest's own members, which is correct and also means the person holding
+   a link cannot see who sent it. This says that one thing and nothing else:
+   no membership, no claim, no side effect, and the caller already has the
+   code. It is the only reason this is a definer function rather than a
+   policy.
+
+   It is also the one function granted to anon, against the blanket revoke
+   below, and that is deliberate: the link is read on the landing screen,
+   before anyone has signed in, so requiring a session would mean the name
+   never appears on the only path that asks for it. What an unauthenticated
+   caller can learn is one first name and one nest name, and only by already
+   holding the code. Guessing one is 31^6, about 890 million, against at most
+   a few hundred open codes at a time. */
+create or replace function public.peek_invite(invite_code text) returns json
+  language plpgsql security definer set search_path to 'public' as $$
+declare inv invites; n nests; founder_name text;
+begin
+  select * into inv from invites where code = upper(invite_code);
+  if inv is null then raise exception 'code_not_found'; end if;
+  if inv.status <> 'open' then raise exception 'code_expired'; end if;
+  if inv.expires_at < now() then raise exception 'code_expired'; end if;
+
+  select * into n from nests where id = inv.nest_id;
+  if n is null then raise exception 'code_not_found'; end if;
+
+  select p.display_name into founder_name from memberships m
+    join profiles p on p.id = m.user_id
+   where m.nest_id = inv.nest_id and m.role = 'founder' limit 1;
+
+  return json_build_object('id', n.id, 'name', n.name, 'status', n.status,
+                           'founder_name', coalesce(founder_name, 'Someone'));
+end; $$;
 
 /* Claiming creates a pending membership and nothing else. Joining is never
    done by code alone. */
@@ -319,6 +353,7 @@ end; $$;
 revoke execute on all functions in schema public from anon, public;
 grant execute on function public.create_nest()                        to authenticated;
 grant execute on function public.issue_invite(uuid)                   to authenticated;
+grant execute on function public.peek_invite(text)                    to authenticated, anon;
 grant execute on function public.claim_invite(text)                   to authenticated;
 grant execute on function public.confirm_invite(text, boolean)        to authenticated;
 grant execute on function public.freeze_nest(uuid, text)              to authenticated;
@@ -327,5 +362,11 @@ grant execute on function public.delete_me()                          to authent
 /* ---------------- bringing an existing project up to date ----------------
    The file above is the whole database as it should be. A project that was
    created before the age gate stopped keeping what it blocks needs one
-   column, and it is safe to run this on a project that already has it. */
+   column, and one created before an invite link could name the person who
+   sent it needs peek_invite. Both are safe on a project that already has
+   them: the column line is an if not exists, and the function is a create or
+   replace, so run the peek_invite block above verbatim and then these three
+   lines. Applied to the live project on 2026-09-14. */
 alter table profiles add column if not exists age_blocked boolean not null default false;
+revoke execute on function public.peek_invite(text) from public;
+grant execute on function public.peek_invite(text) to authenticated, anon;

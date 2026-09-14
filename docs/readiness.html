@@ -181,11 +181,11 @@ footer strong{color:var(--ink); font-weight:600}
   </div>
 
   <dl class="facts">
-    <dt>Codebase</dt><dd>4,179 lines across 8 files</dd>
-    <dt>Content</dt><dd>49 props, 6 rooms, 100 questions</dd>
+    <dt>Codebase</dt><dd>5,965 lines across 10 files</dd>
+    <dt>Content</dt><dd>50 props, 6 rooms, 100 questions</dd>
     <dt>Time to finish the game</dt><dd>about six months</dd>
     <dt>Onboarding vs gameplay</dt><dd>17 screens vs 3</dd>
-    <dt>Backend</dt><dd>none, localStorage only</dd>
+    <dt>Backend</dt><dd>Postgres on Supabase, live, and what production runs on</dd>
     <dt>Store blockers found</dt><dd>2, both now addressed</dd>
     <dt>Lot triangles</dt><dd>96,142 of a 100,000 budget</dd>
   </dl>
@@ -207,9 +207,9 @@ footer strong{color:var(--ink); font-weight:600}
     that the home records months of showing up. An economy you can exhaust in an afternoon
     records nothing.</p>
     <p>Now capped. The ritual, the duel and memory each have a daily limit, the
-    ceiling is 242 coins on a perfect day, and the catalogue grew to 49 props and
+    ceiling is 242 coins on a perfect day, and the catalogue grew to 50 props and
     six rooms worth 49,480 coins. Six months of engaged play earns about 36,000,
-    which is every room and roughly 41 of the 49 props.</p>
+    which is every room and roughly 41 of the 50 props.</p>
     <div class="evidence">was  catalogue 9,410 · duel uncapped · 79 rounds ≈ <b>40 minutes</b>
 now  catalogue 49,480 · ritual 1/day, duel 1/day, memory 2/day
      ceiling <b>242 coins a day</b>, no way to exceed it</div>
@@ -235,7 +235,7 @@ day 180 &nbsp;<b>36,050 of a 49,480 catalogue, about 73%</b></div>
     <p>The real problem was sameness. With a catalogue anyone could afford entirely,
     every home on the street was identical, which quietly destroys the showcase. The fix
     is not more props to fill space, it is a catalogue bigger than what the curve buys.
-    Now at 49 props with eight left unbought at six months. Honest assessment: eight is
+    Now at 50 props with eight left unbought at six months. Honest assessment: eight is
     a start, and real variety wants two or three times this catalogue. That is content
     production, and it stays the long pole.</p>
     <div class="evidence">props <b>32 → 49</b> · rooms <b>4 → 6</b>
@@ -288,7 +288,9 @@ gameplay <b>screenHome, screenPlay, screenBuild</b> plus the street</div>
           <code>bevelBox</code>, not modelled assets. They have to be built in Blender.</li>
         <li>The toon material and the dome, which are hand written three.js shaders.</li>
         <li>The whole rendering layer in <code>src/diorama.js</code>, 889 lines.</li>
-        <li>The storage layer, which is <code>localStorage</code> end to end.</li>
+        <li>The client half of the storage layer. The database does not move: the schema,
+          the policies and the definer functions in <code>docs/backend.sql</code> are the
+          one part of this that a rewrite of the client does not touch.</li>
       </ul>
     </div>
     <div>
@@ -305,16 +307,34 @@ gameplay <b>screenHome, screenPlay, screenBuild</b> plus the street</div>
   </div>
 
   <div class="find" style="margin-top:14px">
+    <span class="tag done">Fixed since this audit</span>
+    <h3>Two phones do pair, and that is what the live site is doing</h3>
+    <p>This finding said there was no backend and that nothing worked between two
+    devices. That is no longer true and has not been for some time.
+    <code>src/backend.js</code> serves the same twenty one endpoint shapes as
+    <code>src/api.js</code>, against Postgres on Supabase, with row level security and
+    seven definer functions carrying the rules that a client must not be trusted with.
+    A probe at boot picks the transport, so the local store is the fallback rather than
+    the product. The deployed site talks to the database.</p>
+    <div class="evidence">persistence <b>Postgres, with localStorage as the fallback</b>, 39 call sites
+realtime <b>Supabase channels live, BroadcastChannel between tabs</b>
+push, deep links  <b>deep links yes, push not yet</b></div>
+  </div>
+
+  <div class="find" style="margin-top:14px">
     <span class="tag missing">Missing</span>
-    <h3>There is no backend, so two phones cannot pair</h3>
-    <p>The two tab demo is real in the sense that two separate sessions genuinely
-    negotiate a pairing, but they do it through shared browser storage. Nothing in the
-    product works between two devices: not pairing, not the shared nest, not the street,
-    not notifications. <code>src/api.js</code> describes the service that needs to exist,
-    which is a real head start, but it is a description and not a service.</p>
-    <div class="evidence">persistence <b>localStorage only</b>, 18 call sites
-realtime <b>BroadcastChannel between tabs</b>
-push, deep links, cross device sync  <b>none</b></div>
+    <h3>The transport that carries production traffic is the one nothing tests</h3>
+    <p>Every browser suite in <code>tools/</code> forces the local store, so the honest
+    reading is that the test signal and the production execution do not overlap at all:
+    the local store has the assertions and no users, the database has the users and no
+    assertions. The two tables had already drifted apart once without anybody noticing,
+    because the screen that needed the missing route swallowed its own 404.
+    <code>tools/parity-test.js</code> now fails the build on that particular shape of
+    drift, which is the cheap half. The expensive half, a suite that signs in and pairs
+    two people against a real project, does not exist yet.</p>
+    <div class="evidence">suites against <b>src/api.js</b>  9
+suites against <b>src/backend.js</b>  0
+route parity  <b>checked statically, 21 routes both sides</b></div>
   </div>
 </section>
 

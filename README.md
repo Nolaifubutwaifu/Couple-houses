@@ -345,9 +345,22 @@ matter most, since they are the ones a real couple performs. `node
 tools/local-test.js` runs the same flow with the backend switched off, so the
 fallback is a tested path rather than a hope.
 
-All of them need a static server on 8811 serving this directory; the two against
-the database also need the browser to be able to reach Supabase. The four client
-suites (`handoff`, `entry`, `two-phones`, `solo`) run entirely on the local store, so
+All of them need a server on 8811 serving this directory, and `node
+tools/serve.js` is it. It serves the files, caches the Supabase client library
+at `/_lib/supabase.js`, and forwards `/auth`, `/rest`, `/realtime`, `/storage`,
+`/functions` and `/pg` to the project named in `src/backend.js`, websocket
+included. That is why the database suites set `url: location.origin`: the page
+makes no cross origin request and opens no TLS connection of its own, so the
+same four suites run on a laptop, in CI, and inside a sandbox whose egress goes
+through a proxy. Point it somewhere else with `NEST_SUPABASE_URL`. It holds no
+key: whatever the page sends is what goes upstream.
+
+`node tools/parity-test.js` needs nothing at all. It reads both route tables
+and every `Api.call` in the app and fails if the two transports have drifted,
+which they had: `GET /invites/{code}` was in `src/api.js` and not in
+`src/backend.js`, so the invite link named the person who sent it on the local
+store and quietly named nobody on the database. The four client suites
+(`handoff`, `entry`, `two-phones`, `solo`) run entirely on the local store, so
 they hold with no network at all.
 
 ## Leaving, deletion and moderation

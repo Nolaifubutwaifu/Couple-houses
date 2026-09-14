@@ -424,6 +424,17 @@ const BROUTES = {
     return { nest, invite: await this.issueInvite(nest.id) };
   },
 
+  /* The same one line of information the local route gives, and the same
+     shape, so the screen that names the person who invited you does not have
+     to know which store answered. No session is required, because this is
+     read on the landing screen before anyone has signed in. */
+  async "GET /invites/{code}"({ code }){
+    const r = await this.sb.rpc("peek_invite", { invite_code:String(code || "").toUpperCase() });
+    const nest = this.ok(r, "code_not_found");
+    if(!nest) throw apiError(404, "code_not_found");
+    return { nest };
+  },
+
   async "POST /invites/{code}/revoke"({ code }){
     const me = this.need();
     let nestId = null;

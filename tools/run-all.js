@@ -5,7 +5,8 @@
    was no faster than one at a time and timed two of them out. Two at a time
    is where the curve turns. Pass a name to run just one. */
 const { spawn } = require("node:child_process");
-const SUITES = ["local-test", "pairing-test", "guest-pair-test", "screen-pair-test", "room-sync-test",
+const http = require("node:http");
+const SUITES = ["parity-test", "local-test", "pairing-test", "guest-pair-test", "screen-pair-test", "room-sync-test",
                 "handoff-test", "entry-test", "two-phones-test", "solo-test"];
 const only = process.argv.slice(2);
 const list = only.length ? SUITES.filter(s => only.some(o => s.indexOf(o) >= 0)) : SUITES;
@@ -36,8 +37,28 @@ async function pool(items, width){
    finishing faster. So it runs alone and the light ones pair up. */
 const HEAVY = ["pairing-test"];
 
+/* Every suite but parity-test needs the server on 8811, and four of them need
+   it to be tools/serve.js rather than any static server, because they talk to
+   the database through their own origin. So start one if nothing is there,
+   and take it away again afterwards. */
+const up = () => new Promise(res => {
+  const r = http.get({ host:"127.0.0.1", port:8811, path:"/index.html" }, x => { x.resume(); res(true); });
+  r.on("error", () => res(false));
+  r.setTimeout(1500, () => { r.destroy(); res(false); });
+});
+
+async function serve(){
+  if(await up()) return null;
+  const p = spawn("node", [__dirname + "/serve.js"], { stdio:"ignore" });
+  for(let i = 0; i < 40 && !(await up()); i++) await new Promise(r => setTimeout(r, 250));
+  if(!(await up())){ p.kill(); throw new Error("could not start tools/serve.js on 8811"); }
+  console.log("  started tools/serve.js on 8811");
+  return p;
+}
+
 (async () => {
   const t = Date.now();
+  const server = await serve();
   const heavy = list.filter(n => HEAVY.indexOf(n) >= 0);
   const light = list.filter(n => HEAVY.indexOf(n) < 0);
   const results = (await pool(heavy, 1)).concat(await pool(light, 2));
@@ -52,5 +73,6 @@ const HEAVY = ["pairing-test"];
   });
   console.log("\n" + (bad ? bad + " suite(s) failing" : "all suites green") +
               " in " + ((Date.now() - t) / 1000).toFixed(0) + "s");
+  if(server) server.kill();
   process.exit(bad ? 1 : 0);
 })();
