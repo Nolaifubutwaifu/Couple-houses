@@ -382,11 +382,29 @@ const BROUTES = {
     if(name.length < 1 || name.length > 24) throw apiError(400, "bad_name");
     if(!birthdate) throw apiError(400, "bad_birthdate");
     const age = ageOf(birthdate);
+    /* Age is decided here, before anything is written. A row that fails the
+       check keeps neither the name nor the date: the screen it leads to says
+       the rule is about how personal information is handled, and storing a
+       self declared minor's name and date of birth on the way to saying so is
+       exactly what it promises not to do. */
+    if(age < MIN_AGE){
+      /* age_blocked is the whole of what a refusal leaves behind, and a
+         project that predates it has not got the column. Clearing the name
+         and the date is the part that must not be skipped, so that write goes
+         first and the flag is added on top where it exists. Without it the
+         block still refuses, it just stops surviving a second attempt, and
+         docs/backend.sql carries the one line that fixes that. */
+      await this.sb.from("profiles")
+        .update({ display_name:null, birthdate:null, age_verified:false })
+        .eq("id", this.uid);
+      await this.sb.from("profiles").update({ age_blocked:true }).eq("id", this.uid);
+      throw apiError(403, "under_age", { min_age:MIN_AGE });
+    }
     const p = this.ok(await this.sb.from("profiles").update({
-      display_name:name, birthdate, age_verified: age >= MIN_AGE,
+      display_name:name, birthdate, age_verified:true,
       locale: navigator.language || "en",
     }).eq("id", this.uid).select().single(), "save_failed");
-    if(!p.age_verified) throw apiError(403, "under_age", { min_age:MIN_AGE, age });
+    await this.sb.from("profiles").update({ age_blocked:false }).eq("id", this.uid);
     return { user:p };
   },
 
@@ -404,6 +422,17 @@ const BROUTES = {
     }
     const nest = this.ok(await this.sb.rpc("create_nest"), "nest_failed");
     return { nest, invite: await this.issueInvite(nest.id) };
+  },
+
+  /* The same one line of information the local route gives, and the same
+     shape, so the screen that names the person who invited you does not have
+     to know which store answered. No session is required, because this is
+     read on the landing screen before anyone has signed in. */
+  async "GET /invites/{code}"({ code }){
+    const r = await this.sb.rpc("peek_invite", { invite_code:String(code || "").toUpperCase() });
+    const nest = this.ok(r, "code_not_found");
+    if(!nest) throw apiError(404, "code_not_found");
+    return { nest };
   },
 
   async "POST /invites/{code}/revoke"({ code }){

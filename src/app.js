@@ -78,11 +78,40 @@ function newGame(nest){
     bond:0,
     streak:{ count:0, lastCheckIn:null, day:null, a:false, b:false, aAns:null, bAns:null },
     daily:{ day:null, duel:0, memory:0 },
+    /* The duel round is shared rather than per device, so each of you plays
+       your own half of it. The plan is what a founder laid out while they
+       were waiting on their own: positions, no purchase. */
+    duel:null,
+    plan:[],
     house:{ rooms, inventory:[], placed:[] },
     showcase:{ published:false, likesGiven:[], tagline:"" },
     stats:{ gamesPlayed:0, duelsPlayed:0, bestDuel:0 },
     ceremony_pending:false,
   };
+}
+
+/* An instanceId is the only handle a placed thing has, and pick up removes
+   every row that matches it: two things sharing an id means lifting one
+   deletes both and hands back one, which is how a player loses furniture they
+   paid for. The tutorial used to write "start_plant" on every tap, so saves
+   already in the wild carry the damage and repairing on load is the only way
+   to reach them. Nothing is deleted here. The duplicate keeps its place on the
+   floor and gets an id of its own. */
+function repairInstanceIds(g){
+  if(!g || !g.house) return false;
+  const seen = new Set();
+  let fixed = 0;
+  const claim = item => {
+    if(!item || !item.instanceId) return;
+    if(seen.has(item.instanceId)){
+      item.instanceId = item.itemId + "_fix_" + uid();
+      fixed++;
+    }
+    seen.add(item.instanceId);
+  };
+  (g.house.inventory || []).forEach(claim);
+  (g.house.placed || []).forEach(claim);
+  return fixed > 0;
 }
 
 /* Three way merge, for the save the database refused because the other person
@@ -134,6 +163,13 @@ function mergeGame(base, mine, theirs){
       duel:Math.max(mine.daily.duel || 0, theirs.daily.day === mine.daily.day ? theirs.daily.duel || 0 : 0),
       memory:Math.max(mine.daily.memory || 0, theirs.daily.day === mine.daily.day ? theirs.daily.memory || 0 : 0) };
   }
+  /* The duel round is one round with two halves, and the only way it moves is
+     forward, so whichever copy has more of it filled in is the true one. */
+  const filled = d => !d ? -1 : (d.settled ? 1000 : 0) + (d.answers || []).length + (d.guesses || []).length;
+  if(filled(mine.duel) > filled(theirs.duel)) out.duel = mine.duel;
+  // the plan is one person's sketch, so the copy that changed is the copy
+  if(JSON.stringify(mine.plan || []) !== JSON.stringify(base.plan || [])) out.plan = mine.plan;
+
   if(mine.showcase.published !== base.showcase.published ||
      mine.showcase.tagline !== base.showcase.tagline) out.showcase = mine.showcase;
   if(mine.ritualLog && (!theirs.ritualLog || mine.ritualLog.length > theirs.ritualLog.length))
@@ -141,6 +177,29 @@ function mergeGame(base, mine, theirs){
   out.ceremony_pending = mine.ceremony_pending && theirs.ceremony_pending;
   return out;
 }
+
+/* Settings had nothing to say about notifications, which left the primer in
+   onboarding as the only time anybody was ever asked. Browsers do not let a
+   page take a permission back, so the honest switch is our own: the
+   permission if we do not have it, and a mute of our own that notify()
+   obeys if we do. */
+const Push = {
+  KEY:"nest.push_muted",
+  muted(){
+    try{ return localStorage.getItem(this.KEY) === "1"; }catch(err){ return false; }
+  },
+  setMuted(v){
+    try{ localStorage.setItem(this.KEY, v ? "1" : "0"); }catch(err){ /* memory only */ }
+  },
+  permission(){
+    try{ return typeof Notification === "undefined" ? "unsupported" : Notification.permission; }
+    catch(err){ return "unsupported"; }
+  },
+  async ask(){
+    try{ return (await Notification.requestPermission()) === "granted"; }
+    catch(err){ return false; }
+  },
+};
 
 /* Only one pair of hands at a time. Two people dragging furniture around the
    same room at once is not collaboration, it is a fight the loser does not
@@ -192,11 +251,21 @@ const App = {
     if(!Api.db.game[nestId]) Api.db.game[nestId] = newGame({ id:nestId });
     state = Api.db.game[nestId];
     state.nest_id = nestId;
+    if(repairInstanceIds(state)) Store.save(state);
     return state;
   },
   saveGame(){
     Store.save(state);
-    Api.Realtime.emit("game.changed", { nest_id:state.nest_id });
+    /* The document rides with the message on the local store. localStorage is
+       not consistent across renderer processes on write, so a tab told to go
+       and re-read can still be looking at the value from before the write
+       that prompted the message: the other phone then sits on the ritual or
+       the duel showing a state that has already moved on, and only a reload
+       catches it up. A database does not have this problem, and its own
+       message carries no document because it has already pulled the row. */
+    Api.Realtime.emit("game.changed", Api.Realtime.usesLocalDB
+      ? { nest_id:state.nest_id, game:state }
+      : { nest_id:state.nest_id });
   },
 
   /* Onboarding hands over here, and only here. Reaching this point means
@@ -219,8 +288,10 @@ const App = {
     Api.Realtime.on(msg => {
       if(!state || msg.payload.nest_id !== state.nest_id) return;
       if(msg.type === "game.changed"){
-        const fresh = Api.db.game[state.nest_id];
+        // what arrived beats what the store has had time to tell us
+        const fresh = msg.payload.game || Api.db.game[state.nest_id];
         if(fresh){
+          Api.db.game[state.nest_id] = fresh;
           state = fresh;
           state.couple = this.couple(this.me);
           /* If the document that just arrived already accounts for the thing
@@ -258,10 +329,11 @@ const App = {
       togetherSince: new Date(me.nest.created_at).toISOString().slice(0, 10),
     };
   },
-  /* one notification path, so the nudge rules cannot be bypassed by a caller */
+  /* one notification path, so the nudge rules cannot be bypassed by a caller,
+     and one switch, so the setting cannot be bypassed either */
   notify(body){
     try{
-      if(typeof Notification !== "undefined" && Notification.permission === "granted"){
+      if(typeof Notification !== "undefined" && Notification.permission === "granted" && !Push.muted()){
         new Notification("NEST", { body });
         return;
       }
@@ -296,7 +368,27 @@ const App = {
       s.appendChild(el(`<div class="card">
         <p class="h">${esc(me.nest.name || "Your nest")}</p>
         <p class="s dim">${other && other.user ? "With " + esc(other.user.display_name) : "Just you"} ·
-          started ${new Date(me.nest.created_at).toLocaleDateString()}</p></div>`));
+          started ${formatDate(me.nest.created_at)}</p></div>`));
+      const rename = el(`<div class="card">
+        <p class="h">Rename this nest</p>
+        <p class="s dim">You both named it together. Either of you can change it, and the
+        other one is told.</p>
+        <label class="f" style="margin-top:12px"><span>Name</span>
+          <input id="set-name" maxlength="28" value="${esc(me.nest.name || "")}"></label>
+        <button class="btn" id="set-rename">Save the name</button></div>`);
+      rename.querySelector("#set-rename").onclick = async () => {
+        const name = rename.querySelector("#set-name").value.trim();
+        if(!name) return toast("It needs a name");
+        if(name === me.nest.name) return;
+        try{
+          await Api.call("POST", "/nests/" + me.nest.id + "/name", { name });
+          me.nest.name = name;
+          toast("Renamed");
+          render();
+        }catch(err){ toast("That did not save. Try again?"); }
+      };
+      s.appendChild(rename);
+
       const leave = el(`<div class="card">
         <p class="h">Leave this nest</p>
         <p class="s dim">The nest stops here for both of you. Nothing is deleted and nobody
@@ -314,11 +406,66 @@ const App = {
       arch.nests.forEach(n => {
         const names = n.members.map(m => m.name || "Someone").join(" and ");
         const card = el(`<button class="row"><div><p class="h">${esc(n.name || "A nest")}</p>
-          <p class="s dim">${esc(names)} · frozen ${new Date(n.archived_at).toLocaleDateString()}</p></div></button>`);
+          <p class="s dim">${esc(names)} · frozen ${formatDate(n.archived_at)}</p></div></button>`);
         card.onclick = () => this.showArchived(n);
         s.appendChild(card);
       });
     }
+
+    /* Settings held nothing but the two irreversible things. Signing out is
+       the ordinary way to hand the device back, and without it the only ways
+       off an account were leaving the nest or deleting it. */
+    const out = el(`<div class="card">
+      <p class="h">Sign out</p>
+      <p class="s dim">Nothing is deleted and the nest is untouched. Signing back in with the
+      same account puts you exactly here.</p>
+      <button class="btn" id="set-out" style="margin-top:12px">Sign out</button></div>`);
+    out.querySelector("#set-out").onclick = () => {
+      Api.Session.clear();
+      Track.fire("signed_out", { from:"settings" });
+      this.restart();
+    };
+    s.appendChild(out);
+
+    const perm = Push.permission();
+    const on = perm === "granted" && !Push.muted();
+    const note = el(`<div class="card">
+      <p class="h">Notifications</p>
+      <p class="s dim">${
+        perm === "unsupported" ? "This browser has no notifications, so there is nothing to turn on."
+        : perm === "denied" ? "Your browser is blocking them for this site. That switch is in the browser, not here, and we cannot turn it back on for you."
+        : on ? "On. We ping you when " + (other && other.user ? esc(other.user.display_name) : "your partner") +
+               " does something in your nest, or when it is time for your daily moment. Nothing else, ever."
+        : perm === "granted" ? "Muted. Nothing will be sent until you turn them back on."
+        : "Off. Turn them on and we will ping you when your partner does something, or when it is time for your daily moment."}</p>
+      ${perm === "unsupported" || perm === "denied" ? ""
+        : `<button class="btn" id="set-push" style="margin-top:12px">${
+            on ? "Mute notifications" : perm === "granted" ? "Turn them back on" : "Turn on notifications"}</button>`}</div>`);
+    if(note.querySelector("#set-push")) note.querySelector("#set-push").onclick = async () => {
+      if(on){ Push.setMuted(true); toast("Muted"); return this.openSettings(host); }
+      if(perm !== "granted"){
+        const got = await Push.ask();
+        Track.fire(got ? "push_granted" : "push_denied", { via:"settings" });
+        if(!got) toast("Your browser said no");
+      }
+      Push.setMuted(false);
+      this.openSettings(host);
+    };
+    s.appendChild(note);
+
+    const help = el(`<div class="card">
+      <p class="h">Help and legal</p>
+      <p class="s dim">Something wrong, or a question about your data? Write to
+        <a href="mailto:${CONTACT_EMAIL}">${esc(CONTACT_EMAIL)}</a> and a person answers.</p>
+      <p class="s dim"><a href="#terms" id="set-terms">Terms</a> ·
+        <a href="#privacy" id="set-priv">Privacy Policy</a></p></div>`);
+    ["#set-terms", "#set-priv"].forEach(id => {
+      help.querySelector(id).onclick = e => {
+        e.preventDefault();
+        toast("The real document opens here in the product");
+      };
+    });
+    s.appendChild(help);
 
     const del = el(`<div class="card" style="margin-top:14px">
       <p class="h">Delete your account</p>
@@ -377,7 +524,7 @@ const App = {
       <p class="ob-h">${esc(nest.name || "A nest")}</p>
       <p class="s dim">${esc(names.map(n => n || "Someone").join(" and "))} · ${
         g ? g.house.placed.length : 0} things placed · frozen ${
-        new Date(nest.archived_at).toLocaleDateString()}</p>
+        formatDate(nest.archived_at)}</p>
       <p class="s dim">This one is finished. You can look at it, and that is all.</p>
       <button class="btn go" id="arch-back" style="margin-top:12px">Close</button></div>`);
     card.querySelector("#arch-back").onclick = () => App.restart();
@@ -434,6 +581,7 @@ function refreshWorld(){
     const names = viewingLot.partners.split(" and ");
     Diorama.setLot({ rooms, placed:viewingLot.placed }, { partnerA:names[0], partnerB:names[1] }, viewingLot.tagline);
     Diorama.applyState(viewingLot.stateId || "steady", season);
+    Diorama.setPlan(null);                      // somebody else's house, not your sketch
     return;
   }
   const nest = App.me && App.me.nest;
@@ -441,6 +589,16 @@ function refreshWorld(){
   const st = currentDomeState();
   Diorama.setLot(state.house, state.couple, SEASON_STATES[st].label.toLowerCase() + " · " + currentStreak() + " days");
   Diorama.applyState(st, season);
+  Diorama.setPlan(livePlan());
+}
+
+/* A planned spot stops being a plan the moment something real is standing on
+   it, so the sketch quietly empties itself as the room gets built rather than
+   needing to be tidied away. */
+function livePlan(){
+  if(!state || !state.plan || !state.plan.length) return [];
+  const taken = state.house.placed.map(p => p.room + ":" + p.x + ":" + p.y);
+  return state.plan.filter(p => taken.indexOf(p.room + ":" + p.x + ":" + p.y) < 0);
 }
 
 /* ---- ui helpers ---- */
@@ -452,6 +610,15 @@ function el(html){
 }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])); }
 let toastTimer = null;
+/* 9/10/2026 is two different days depending on who is reading it, and the
+   browser locale is not the same question as the one the account answered at
+   signup. A named month is the same day in every locale. */
+function formatDate(value){
+  const d = value instanceof Date ? value : new Date(value);
+  if(isNaN(d)) return "";
+  return d.toLocaleDateString(undefined, { day:"numeric", month:"short", year:"numeric" });
+}
+
 function toast(msg){
   const t = $("#toast");
   t.textContent = msg;
@@ -459,7 +626,17 @@ function toast(msg){
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("on"), 1900);
 }
+/* A toast is about the screen it was raised on. "Jo wants to join your nest"
+   following someone through the naming ceremony and into the app is a message
+   about a moment that has already happened. */
+function clearToast(){
+  const t = $("#toast");
+  if(!t) return;
+  clearTimeout(toastTimer);
+  t.classList.remove("on");
+}
 function go(tab, view){
+  clearToast();
   if(tab !== "show" && viewingLot){ viewingLot = null; refreshWorld(); }
   const was = route.tab;
   route = { tab, view:view || null };
@@ -592,12 +769,34 @@ function screenBuild(root){
     root.appendChild(strip);
   }
 
+  /* Whatever the founder sketched out while they were waiting on their own is
+     standing in the room as an outline. It is not a purchase and not a
+     decision: it is one person saying here is what I was thinking. */
+  const plan = livePlan();
+  if(plan.length){
+    const names = App.me && App.me.members.find(m => m.role === "founder");
+    const who = names && names.user ? names.user.display_name : state.couple.partnerA;
+    const card = el(`<div class="card">
+      <p class="h">The plan from while you waited</p>
+      <p class="s dim">${plan.length === 1 ? "One spot" : plan.length + " spots"} ${esc(who)}
+      sketched out before the two of you were here. Nothing was bought. Build over them,
+      or clear them and start from an empty floor.</p>
+      <button class="btn" id="plan-clear" style="margin-top:12px">Clear the plan</button></div>`);
+    card.querySelector("#plan-clear").onclick = () => {
+      state.plan = [];
+      save(); refreshWorld(); toast("Plan cleared"); render();
+    };
+    root.appendChild(card);
+  }
+
   root.appendChild(el(`<p class="lbl">Workshop</p>`));
   const grid = el(`<div class="grid"></div>`);
+  const planned = {};
+  plan.forEach(p => { planned[p.itemId] = (planned[p.itemId] || 0) + 1; });
   CATALOGUE.filter(i => i.room === shopFilter).forEach(item => {
     const afford = state.wallet.coins >= item.price;
     const c = el(`<div class="tile buy"><img src="${Offscreen.icon(item.id, 128)}" alt="">
-      <span>${esc(item.name)}</span><em>${item.charm} charm</em>
+      <span>${esc(item.name)}</span><em>${planned[item.id] ? "planned · " : ""}${item.charm} charm</em>
       <button class="btn sm ${afford ? "go" : ""}" ${afford ? "" : "disabled"}>${item.price}</button></div>`);
     c.querySelector("button").onclick = () => {
       if(!spend(item.price)) return toast("Not enough coins");
@@ -725,11 +924,35 @@ async function render(){
   else if(route.tab === "play") screenPlay(sheet);
   else if(route.tab === "build") screenBuild(sheet);
   else await screenShowcase(sheet);
+  if(App.measureSheet) App.measureSheet();
 }
 
 /* ---- boot ----
    onboarding.js loads after this file, so boot waits for the document
    rather than running the moment app.js is parsed */
+/* The stage is whatever the sheet leaves, so the sheet has to say how much
+   that is. Measured rather than assumed, and the camera reframes to the box
+   it actually gets: on a short sheet the lot stops being cropped with half
+   the screen empty under it, and on a long one the last row stops hiding
+   behind the tab bar. */
+function watchSheet(){
+  const sheet = $("#sheet"), root = document.documentElement;
+  let queued = false;
+  const apply = () => {
+    queued = false;
+    if(document.body.classList.contains("onboarding")) return;   // the flow frames itself
+    const h = Math.round(sheet.getBoundingClientRect().height);
+    if(!h) return;
+    root.style.setProperty("--sheet", h + "px");
+    Diorama.resize();
+  };
+  const queue = () => { if(!queued){ queued = true; requestAnimationFrame(apply); } };
+  if(typeof ResizeObserver !== "undefined") new ResizeObserver(queue).observe(sheet);
+  addEventListener("resize", queue);
+  App.measureSheet = queue;
+  queue();
+}
+
 addEventListener("DOMContentLoaded", async function boot(){
   Diorama.init($("#stage"));
   Diorama.onPlace = spot => {
@@ -760,8 +983,12 @@ addEventListener("DOMContentLoaded", async function boot(){
     if(b.dataset.tab === "play") activeGame = null;
     go(b.dataset.tab);
   });
+  /* Off by default. #dev on the URL brings them back for whoever needs them,
+     which is us and never a couple looking at their living room. */
+  if(/[#&]dev\b/.test(location.hash)) $("#devbtn").hidden = $("#funbtn").hidden = false;
   $("#devbtn").onclick = () => openBible();
   $("#funbtn").onclick = () => openFunnel();
+  watchSheet();
   setTimeout(() => { const sp = $("#splash"); if(sp) sp.classList.add("gone"); }, 380);
   Onboard.begin();
 });

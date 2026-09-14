@@ -11,8 +11,12 @@ const BALANCE = {
      streak. Deliberately the best rate in the game per second spent. */
   ritualBase: 30, ritualStreakStep: 3, ritualStreakCap: 60,
 
-  /* The duel. Once a day. Rewards knowing each other, not grinding. */
-  duelPerDay: 1, duelQuestions: 6, duelPerMatch: 12, duelSweepBonus: 20,
+  /* The duel. Once a day. Rewards knowing each other, not grinding.
+     The sweep bonus is gone and the per match rate is down: a perfect duel
+     used to pay 92, which is three days of ritual for forty seconds of one
+     person tapping through both halves on the same phone. The ritual is
+     supposed to be the best rate in the game and now it is again. */
+  duelPerDay: 1, duelQuestions: 6, duelPerMatch: 9, duelSweepBonus: 0,
 
   /* Memory. Filler for one person alone, so it pays least and caps soonest. */
   memoryPerDay: 2, memoryPairs: 6, memoryMax: 30, memoryMin: 8,
@@ -169,6 +173,18 @@ function spendPlay(game){
   if(game === "memory") state.daily.memory++;
 }
 
+/* Which row on this screen is yours. The founder is partner A, and there are
+   only ever two of them. */
+function myRitualKey(){
+  const m = App.me && App.me.membership;
+  return m && m.role === "partner" ? "b" : "a";
+}
+function ritualName(key){ return key === "a" ? state.couple.partnerA : state.couple.partnerB; }
+function hasAnswered(streak, key){
+  const v = streak[key + "Ans"];
+  return v !== null && v !== undefined;
+}
+
 /* the same question for both partners, stable for the whole day */
 function ritualToday(){
   const key = today() + (state.nest_id || "");
@@ -190,6 +206,9 @@ function completeRitual(){
 }
 
 function capNote(game){
+  // a duel that is under way is not a play left, it is a play happening
+  if(game === "duel" && state.duel && state.duel.day === today() && !state.duel.settled)
+    return state.duel.phase === "answer" ? "answering now" : "guessing now";
   const left = playsLeft(game);
   if(left > 0) return left === 1 ? "1 play left today" : left + " plays left today";
   return "Back tomorrow";
@@ -208,10 +227,25 @@ const GAMES = {
         <p class="h" style="margin-top:10px">${esc(q.q)}</p>
         <div class="ritual" id="rit"></div></div>`));
       const host = root.querySelector("#rit");
-      [["a", state.couple.partnerA], ["b", state.couple.partnerB]].forEach(([key, name]) => {
+      /* Two phones, not one. You answer your own row and nobody else's, and
+         you do not see theirs until yours is in. Rendering both rows on
+         whichever device opened the screen meant one person could answer for
+         both, read their partner's answer first, and take the streak, the
+         coins and the payoff line alone in four taps. The reveal is the whole
+         point of the ritual, so it waits. */
+      const mine = myRitualKey(), theirs = mine === "a" ? "b" : "a";
+      const both = hasAnswered(s, "a") && hasAnswered(s, "b");
+      [[mine, ritualName(mine), true], [theirs, ritualName(theirs), false]].forEach(([key, name, isMe]) => {
         const ans = s[key + "Ans"];
-        if(ans !== null && ans !== undefined){
-          host.appendChild(el(`<div class="answered"><b>${esc(name)}</b><span>${esc(q.o[ans])}</span></div>`));
+        if(hasAnswered(s, key)){
+          const show = isMe || both;
+          host.appendChild(el(`<div class="answered"><b>${esc(name)}</b>
+            <span>${show ? esc(q.o[ans]) : "answered"}</span></div>`));
+          return;
+        }
+        if(!isMe){
+          host.appendChild(el(`<div class="waiting"><b>${esc(name)}</b>
+            <span class="s dim">${done ? "missed it" : "not yet"}</span></div>`));
           return;
         }
         const row = el(`<div class="waiting"><b>${esc(name)}</b>
@@ -222,7 +256,7 @@ const GAMES = {
         };
         host.appendChild(row);
       });
-      if(s.aAns !== null && s.aAns !== undefined && s.bAns !== null && s.bAns !== undefined){
+      if(both){
         const same = s.aAns === s.bAns;
         root.appendChild(el(`<div class="card mid"><p class="h">${
           same ? "You said the same thing." : "Two different answers."}</p>
@@ -248,10 +282,24 @@ const GAMES = {
     },
   },
 
+  /* The duel, across two phones. It used to run start to finish on whichever
+     device opened it, with a "pass the phone" screen in the middle that
+     nothing enforced: one person could answer six questions about themselves
+     and then guess the answers they had just typed, which is how the whole
+     day's earning was swept alone in forty seconds. The round now lives in
+     the shared document. You only ever see your own half of it, and the other
+     half is your partner's to play on their own phone, which is the same
+     product the invite and the pairing already promised. */
   duel: {
     id:"duel", title:"Trivia duel", blurb:"One answers, the other guesses. Once a day.",
+    round(){
+      rollDay();
+      const d = state.duel;
+      return d && d.day === today() ? d : null;
+    },
     render(root){
-      if(!activeGame || activeGame.type !== "duel"){
+      const d = this.round();
+      if(!d){
         if(playsLeft("duel") <= 0){
           root.appendChild(el(`<div class="card mid"><p class="h">Played today</p>
             <p class="s dim">The duel comes back tomorrow. Grinding it would make the
@@ -260,78 +308,110 @@ const GAMES = {
         }
         return this.start(root);
       }
-      const g = activeGame;
-      const askName = g.answerer === "A" ? state.couple.partnerA : state.couple.partnerB;
-      const guessName = g.answerer === "A" ? state.couple.partnerB : state.couple.partnerA;
+      const mine = myRitualKey();
+      const guessKey = d.answerer === "a" ? "b" : "a";
+      const askName = ritualName(d.answerer), guessName = ritualName(guessKey);
 
-      if(g.phase === "answer" || g.phase === "guess"){
-        const q = g.qs[g.i];
-        const who = g.phase === "answer" ? askName : guessName;
-        const prompt = g.phase === "answer" ? q.q.replace("{A}", askName)
-          : "What did " + askName + " say? " + q.q.replace("{A}", askName);
-        root.appendChild(el(`<div class="card">
-          <div class="spread"><span class="chip">${esc(who)}</span><span class="s dim">${g.i + 1} of ${g.qs.length}</span></div>
-          <div class="bar"><i style="width:${(g.i / g.qs.length) * 100}%"></i></div>
-          <p class="h" style="margin-top:10px">${esc(prompt)}</p><div class="opts"></div></div>`));
-        const opts = root.querySelector(".opts");
-        q.o.forEach((text, idx) => {
-          const b = el(`<button class="opt">${esc(text)}</button>`);
-          b.onclick = () => {
-            (g.phase === "answer" ? g.answers : g.guesses).push(idx);
-            g.i++;
-            if(g.i >= g.qs.length){
-              if(g.phase === "answer"){ g.phase = "handoff"; g.i = 0; }
-              else { g.phase = "done"; GAMES.duel.finish(); }
-            }
-            render();
-          };
-          opts.appendChild(b);
-        });
-        return;
+      if(d.phase === "done") return this.result(root, d, askName);
+      if(d.phase === "answer"){
+        if(mine === d.answerer)
+          return this.ask(root, d, "answers", askName, q => q.q.replace("{A}", askName));
+        return this.waiting(root, esc(askName) + " is answering",
+          "Six questions about themselves. You guess them when they are done.");
       }
-      if(g.phase === "handoff"){
-        root.appendChild(el(`<div class="card mid">
-          <p class="h">Pass the phone to ${esc(guessName)}</p>
-          <p class="s dim">${esc(askName)}, no coaching from over there.</p>
-          <button class="btn go" id="ready">I am ${esc(guessName)}, ready</button></div>`));
-        root.querySelector("#ready").onclick = () => { g.phase = "guess"; render(); };
-        return;
-      }
-      if(g.phase === "done"){
-        const matches = g.guesses.filter((v, i) => v === g.answers[i]).length;
-        root.appendChild(el(`<div class="card mid">
-          <p class="big">${matches} of ${g.qs.length}</p>
-          <p class="s dim">${matches >= 5 ? "You two are unbearable." : matches >= 3 ? "Solid. Room to grow." : "Worth a proper conversation."}</p></div>`));
-        const list = el(`<div class="card"></div>`);
-        g.qs.forEach((q, i) => {
-          const hit = g.guesses[i] === g.answers[i];
-          list.appendChild(el(`<div class="line">
-            <p class="s dim">${esc(q.q.replace("{A}", askName))}</p>
-            <p class="s"><b class="${hit ? "good" : "miss"}">${hit ? "matched" : "missed"}</b> said <b>${esc(q.o[g.answers[i]])}</b>${
-              hit ? "" : ', guessed <span class="dim">' + esc(q.o[g.guesses[i]]) + "</span>"}</p></div>`));
-        });
-        root.appendChild(list);
-        root.appendChild(el(`<p class="s dim mid">Back tomorrow.</p>`));
-        return;
-      }
-      this.start(root);
+      if(mine === guessKey)
+        return this.ask(root, d, "guesses", guessName,
+          q => "What did " + askName + " say? " + q.q.replace("{A}", askName));
+      return this.waiting(root, esc(guessName) + " is guessing",
+        "They are working out what you said. Nothing to do but wait.");
+    },
+    /* A screen that waits on somebody else needs a way off it, or a partner
+       who never opens the app leaves the day's duel stuck here until midnight.
+       Calling it off costs nothing: the play is only spent when a round is
+       finished, so the two of you can start again whenever. */
+    waiting(root, head, line){
+      const card = el(`<div class="card mid"><p class="h">${head}</p>
+        <p class="s dim">${esc(line)}</p><div class="ob-pulse"></div>
+        <button class="ob-quiet" id="duel-off">Call it off for now</button></div>`);
+      card.querySelector("#duel-off").onclick = () => {
+        state.duel = null;
+        save(); render();
+      };
+      root.appendChild(card);
+    },
+    /* One question at a time, and the index is however many are already in,
+       so a reload or a second device lands exactly where the round is. */
+    ask(root, d, field, who, prompt){
+      const i = d[field].length, q = d.qs[i];
+      root.appendChild(el(`<div class="card">
+        <div class="spread"><span class="chip">${esc(who)}</span>
+          <span class="s dim">${i + 1} of ${d.qs.length}</span></div>
+        <div class="bar"><i style="width:${(i / d.qs.length) * 100}%"></i></div>
+        <p class="h" style="margin-top:10px">${esc(prompt(q))}</p><div class="opts"></div></div>`));
+      const opts = root.querySelector(".opts");
+      q.o.forEach((text, idx) => {
+        const b = el(`<button class="opt">${esc(text)}</button>`);
+        b.onclick = () => {
+          if(d[field].length !== i) return;            // a double tap is one answer
+          d[field].push(idx);
+          if(d[field].length >= d.qs.length){
+            if(field === "answers") d.phase = "guess";
+            else { d.phase = "done"; this.settle(d); }
+          }
+          save(); render();
+        };
+        opts.appendChild(b);
+      });
+    },
+    result(root, d, askName){
+      const matches = d.guesses.filter((v, i) => v === d.answers[i]).length;
+      root.appendChild(el(`<div class="card mid">
+        <p class="big">${matches} of ${d.qs.length}</p>
+        <p class="s dim">${matches >= 5 ? "You two are unbearable." : matches >= 3 ?
+          "Solid. Room to grow." : "Worth a proper conversation."}</p></div>`));
+      const list = el(`<div class="card"></div>`);
+      d.qs.forEach((q, i) => {
+        const hit = d.guesses[i] === d.answers[i];
+        list.appendChild(el(`<div class="line">
+          <p class="s dim">${esc(q.q.replace("{A}", askName))}</p>
+          <p class="s"><b class="${hit ? "good" : "miss"}">${hit ? "Matched" : "Missed"}</b> · ${esc(askName)}
+            said <b>${esc(q.o[d.answers[i]])}</b>${
+            hit ? "" : ', guessed <span class="dim">' + esc(q.o[d.guesses[i]]) + "</span>"}</p></div>`));
+      });
+      root.appendChild(list);
+      root.appendChild(el(`<p class="s dim mid">Back tomorrow.</p>`));
     },
     start(root){
-      const pool = [...QUESTIONS].sort(() => Math.random() - 0.5).slice(0, BALANCE.duelQuestions);
-      activeGame = { type:"duel", phase:"answer", qs:pool, i:0, answers:[], guesses:[],
-        answerer: state.stats.duelsPlayed % 2 === 0 ? "A" : "B" };
-      const who = activeGame.answerer === "A" ? state.couple.partnerA : state.couple.partnerB;
+      const mine = myRitualKey();
+      /* Whose turn to answer alternates, and either of you can open the round:
+         if it is not your turn to answer, starting it puts the questions on
+         your partner's phone rather than on yours. */
+      const answerer = state.stats.duelsPlayed % 2 === 0 ? "a" : "b";
+      const who = ritualName(answerer);
       root.appendChild(el(`<div class="card mid">
         <p class="h">${esc(who)} goes first</p>
-        <p class="s dim">Answer ${BALANCE.duelQuestions} questions about yourself, then hand the phone over.</p>
+        <p class="s dim">${answerer === mine
+          ? "Answer " + BALANCE.duelQuestions + " questions about yourself. " +
+            esc(ritualName(answerer === "a" ? "b" : "a")) + " guesses them on their own phone."
+          : esc(who) + " answers " + BALANCE.duelQuestions + " questions about themselves on their " +
+            "phone, then you guess them on yours."}</p>
         <button class="btn go" id="begin">Start</button></div>`));
-      root.querySelector("#begin").onclick = () => render();
+      root.querySelector("#begin").onclick = () => {
+        if(this.round()) return render();               // their phone got there first
+        state.duel = { day:today(), answerer, phase:"answer", settled:false,
+          qs:[...QUESTIONS].sort(() => Math.random() - 0.5).slice(0, BALANCE.duelQuestions),
+          answers:[], guesses:[] };
+        save(); render();
+      };
     },
-    finish(){
-      const g = activeGame;
-      const matches = g.guesses.filter((v, i) => v === g.answers[i]).length;
+    /* Paid once, by whichever device completed the round. The flag is on the
+       shared document, so the other one arriving a moment later pays nothing. */
+    settle(d){
+      if(d.settled) return;
+      d.settled = true;
+      const matches = d.guesses.filter((v, i) => v === d.answers[i]).length;
       let reward = matches * BALANCE.duelPerMatch;
-      if(matches === g.qs.length) reward += BALANCE.duelSweepBonus;
+      if(matches === d.qs.length) reward += BALANCE.duelSweepBonus;
       spendPlay("duel");
       state.stats.duelsPlayed++; state.stats.gamesPlayed++;
       state.stats.bestDuel = Math.max(state.stats.bestDuel, matches);

@@ -19,6 +19,9 @@ const EVENTS = [
   "first_ritual_completed",
   "first_item_placed",
   "push_primer_shown", "push_granted", "push_denied",
+  /* Not part of the funnel, but a device can now be handed back rather than
+     only left or deleted, and how often that happens is worth knowing. */
+  "signed_out",
 ];
 const EVENT_SET = new Set(EVENTS);
 const TRACK_KEY = "nest.analytics.v1";
