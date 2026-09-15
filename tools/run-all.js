@@ -6,7 +6,7 @@
    is where the curve turns. Pass a name to run just one. */
 const { spawn } = require("node:child_process");
 const http = require("node:http");
-const SUITES = ["parity-test", "merge-test", "local-test", "pairing-test", "guest-pair-test", "screen-pair-test", "room-sync-test",
+const SUITES = ["parity-test", "merge-test", "catalogue-test", "local-test", "pairing-test", "guest-pair-test", "economy-test", "screen-pair-test", "room-sync-test",
                 "handoff-test", "entry-test", "two-phones-test", "solo-test"];
 const only = process.argv.slice(2);
 const list = only.length ? SUITES.filter(s => only.some(o => s.indexOf(o) >= 0)) : SUITES;
@@ -35,7 +35,7 @@ async function pool(items, width){
 /* pairing-test opens three browsers of its own, and this box cannot carry
    that plus another suite: measured, it times out on page load rather than
    finishing faster. So it runs alone and the light ones pair up. */
-const HEAVY = ["pairing-test"];
+const HEAVY = ["pairing-test", "economy-test"];
 
 /* Every suite but parity-test needs the server on 8811, and four of them need
    it to be tools/serve.js rather than any static server, because they talk to

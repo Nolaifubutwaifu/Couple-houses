@@ -1065,6 +1065,8 @@ const Onboard = {
         b.dataset.state = "pick";
         opts.querySelectorAll(".opt").forEach(o => { o.disabled = o !== b; });
         send();
+        // with a database the answer is recorded, and the second one of the day is what pays
+        Api.call("POST", "/nests/" + me.nest.id + "/ritual/answer", { day:today(), answer:i }).catch(() => {});
         if(theirs === null){
           s.querySelector(".dim").textContent = "Waiting for " +
             (iAmFounder ? this.partnerNames(me).partnerB : this.partnerNames(me).partnerA) + ".";

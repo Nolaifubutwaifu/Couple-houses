@@ -65,6 +65,15 @@ const room = p => p.eval(id => {
   await enter(A); await enter(B);
   ok("both are in the room with a document each", true);
 
+  /* Things in the room have to be owned now, and owning starts with the first
+     ritual: both answer, the database pays and delivers the starter items.
+     One more plant is bought, for the duplication check at the end. */
+  const day = await A.eval(() => today());
+  await A.call("POST", "/nests/" + nestId + "/ritual/answer", { day, answer:0 });
+  await B.call("POST", "/nests/" + nestId + "/ritual/answer", { day, answer:1 });
+  r = await A.call("POST", "/nests/" + nestId + "/shop/buy", { item:"plant", instance:"plant_rs1" });
+  await A.eval(() => Backend.flush()); await B.eval(() => Backend.flush());
+
   /* One turn at a time. */
   const takeA = await A.eval(id => Api.call("POST", "/nests/" + id + "/build/claim", {}), nestId);
   ok("A takes the turn", takeA.mine === true, JSON.stringify(takeA));
@@ -75,15 +84,15 @@ const room = p => p.eval(id => {
   /* A furnishes. */
   await A.eval(async id => {
     App.ensureGame(id);
-    App.game.house.placed.push({ instanceId:"a1", itemId:"sofa", room:"living", x:2, y:2, rot:0 });
-    App.game.wallet.coins -= 40;
+    App.game.house.inventory = App.game.house.inventory.filter(i => i.instanceId !== "start_armchair");
+    App.game.house.placed.push({ instanceId:"start_armchair", itemId:"armchair", room:"living", x:2, y:2, rot:0 });
     await Store.save(App.game);
   }, nestId);
   const bSaw = await B.page.waitForFunction(id => {
     const g = Api.db.game[id];
-    return g && g.house.placed.some(p => p.itemId === "sofa");
+    return g && g.house.placed.some(p => p.itemId === "armchair");
   }, nestId, { timeout:25000 }).then(() => true).catch(() => false);
-  ok("B's room gets A's sofa", bSaw, JSON.stringify(await room(B)));
+  ok("B's room gets A's armchair", bSaw, JSON.stringify(await room(B)));
 
   /* A hands the turn over and B furnishes. */
   await A.eval(id => Api.call("POST", "/nests/" + id + "/build/release", {}), nestId);
@@ -91,31 +100,33 @@ const room = p => p.eval(id => {
   ok("the turn passes to B once A leaves the screen", takeB2.mine === true, JSON.stringify(takeB2));
   await B.eval(async id => {
     App.ensureGame(id);
-    App.game.house.placed.push({ instanceId:"b1", itemId:"plant", room:"living", x:7, y:1, rot:0 });
+    App.game.house.inventory = App.game.house.inventory.filter(i => i.instanceId !== "start_photos");
+    App.game.house.placed.push({ instanceId:"start_photos", itemId:"photos", room:"living", x:7, y:1, rot:0 });
     await Store.save(App.game);
   }, nestId);
   const aSaw = await A.page.waitForFunction(id => {
     const g = Api.db.game[id];
-    return g && g.house.placed.some(p => p.itemId === "plant");
+    return g && g.house.placed.some(p => p.itemId === "photos");
   }, nestId, { timeout:25000 }).then(() => true).catch(() => false);
-  ok("A's room gets B's plant", aSaw, JSON.stringify(await room(A)));
+  ok("A's room gets B's photo wall", aSaw, JSON.stringify(await room(A)));
 
   /* And the thing that matters: neither of them lost anything. */
   const ra = await room(A), rb = await room(B);
-  ok("both rooms hold both things", JSON.stringify(ra.items) === '["plant","sofa"]' &&
-     JSON.stringify(rb.items) === '["plant","sofa"]', JSON.stringify({ A:ra, B:rb }));
+  const want = it => JSON.stringify(it.filter(x => x !== "plant" || false)) === '["armchair","photos"]';
+  ok("both rooms hold both things", want(ra.items) && want(rb.items), JSON.stringify({ A:ra, B:rb }));
   ok("and they agree on the coins", ra.coins === rb.coins, JSON.stringify({ A:ra.coins, B:rb.coins }));
 
   /* Now the hard one: two saves that genuinely collide. Neither may vanish. */
   await Promise.all([
     A.eval(async id => {
       App.ensureGame(id);
-      App.game.house.placed.push({ instanceId:"a2", itemId:"books", room:"living", x:0, y:5, rot:0 });
+      App.game.house.inventory = App.game.house.inventory.filter(i => i.instanceId !== "start_plant");
+      App.game.house.placed.push({ instanceId:"start_plant", itemId:"plant", room:"living", x:0, y:5, rot:0 });
       await Store.save(App.game);
     }, nestId),
     B.eval(async id => {
       App.ensureGame(id);
-      App.game.house.placed.push({ instanceId:"b2", itemId:"tv", room:"living", x:5, y:0, rot:0 });
+      App.game.house.placed.push({ instanceId:"first", itemId:"plant", room:"living", x:5, y:0, rot:0 });
       await Store.save(App.game);
     }, nestId),
   ]);
@@ -139,7 +150,7 @@ const room = p => p.eval(id => {
     const g = await Backend.sb.from("nests").select("game,game_rev").eq("id", id).maybeSingle();
     return { items:g.data.game.house.placed.map(p => p.itemId).sort(), rev:g.data.game_rev };
   }, nestId);
-  ok("a genuine collision loses nothing", JSON.stringify(settled.items) === '["books","plant","sofa","tv"]',
+  ok("a genuine collision loses nothing", JSON.stringify(settled.items) === '["armchair","photos","plant","plant"]',
      JSON.stringify(settled));
   ok("and the database issued every revision", settled.rev >= 4, String(settled.rev));
 
@@ -148,30 +159,25 @@ const room = p => p.eval(id => {
      sofa, in exactly one of the two places. */
   await B.eval(id => Api.call("POST", "/nests/" + id + "/build/release", {}), nestId);
   await A.eval(id => Api.call("POST", "/nests/" + id + "/build/claim", {}), nestId);
-  await A.eval(async id => {
-    App.ensureGame(id);
-    App.game.house.inventory.push({ instanceId:"dup1", itemId:"armchair" });
-    await Store.save(App.game);
-  }, nestId);
-  await A.page.waitForFunction(() => App.game.house.inventory.some(i => i.instanceId === "dup1"),
+  await A.page.waitForFunction(() => App.game.house.inventory.some(i => i.instanceId === "plant_rs1"),
     null, { timeout:20000, polling:300 }).catch(() => {});
   // A picks it up, and while it is in A's hands the document says it is placed
   await A.eval(() => {
-    held = { instanceId:"dup1", itemId:"armchair", rot:0 };
-    App.game.house.inventory = App.game.house.inventory.filter(q => q.instanceId !== "dup1");
-    Diorama.setHeld("armchair", 0);
+    held = { instanceId:"plant_rs1", itemId:"plant", rot:0 };
+    App.game.house.inventory = App.game.house.inventory.filter(q => q.instanceId !== "plant_rs1");
+    Diorama.setHeld("plant", 0);
   });
   await A.eval(async id => {
     const g = Api.db.game[id];
-    g.house.placed.push({ instanceId:"dup1", itemId:"armchair", room:"living", x:3, y:5, rot:0 });
+    g.house.placed.push({ instanceId:"plant_rs1", itemId:"plant", room:"living", x:3, y:5, rot:0 });
     Api.db.game[id] = g;
     Realtime.deliver({ type:"game.changed", payload:{ nest_id:id }, from:"test" });
   }, nestId);
   await A.page.waitForFunction(() => !held, null, { timeout:8000, polling:100 }).catch(() => {});
   const after = await A.eval(() => ({
     held: held && held.instanceId,
-    placed: App.game.house.placed.filter(p => p.instanceId === "dup1").length,
-    inv: App.game.house.inventory.filter(i => i.instanceId === "dup1").length,
+    placed: App.game.house.placed.filter(p => p.instanceId === "plant_rs1").length,
+    inv: App.game.house.inventory.filter(i => i.instanceId === "plant_rs1").length,
   }));
   ok("a piece the room already accounts for leaves your hands", after.held === null, JSON.stringify(after));
   ok("and it exists exactly once", after.placed + after.inv === 1, JSON.stringify(after));

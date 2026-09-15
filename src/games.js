@@ -295,6 +295,7 @@ const GAMES = {
           route.view = { game:"ritual" };
           completeRitual();
           save(); render();
+          Economy.call("/ritual/answer", { day:today(), answer:i });
         };
         card.querySelector("#ro").appendChild(b);
       });
@@ -442,6 +443,7 @@ const GAMES = {
       state.stats.duelsPlayed++; state.stats.gamesPlayed++;
       state.stats.bestDuel = Math.max(state.stats.bestDuel, matches);
       if(reward > 0) earn(reward, "trivia duel"); else save();
+      Economy.call("/duel/finish", { day:d.day });
     },
   },
 
@@ -499,6 +501,7 @@ const GAMES = {
           spendPlay("memory");
           state.stats.gamesPlayed++;
           earn(g.reward, "memory match");
+          Economy.call("/memory/finish", { day:today(), moves:g.moves });
         }
         render(); return;
       }

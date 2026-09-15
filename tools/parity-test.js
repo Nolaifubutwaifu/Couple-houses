@@ -58,9 +58,22 @@ function callsOf(file){
     const args = splitTop(src.slice(open, close));
     i = close + 1;
     if(args.length < 2) continue;
+    if(/\+\s*path\s*$/.test(args[1].trim())) continue;     // Economy.call's own call, read below
     const method = (args[0].trim().match(/^"([A-Z]+)"$/) || [])[1];
     const p = method ? flatten(args[1]) : null;
     out.push({ file, method, literal:p });
+  }
+  /* Economy.call is the one wrapper that owns part of the path itself: it is
+     always a POST, always under the nest the person is in. Its own Api.call
+     reads as a hole and is skipped above, so the paths are read from here. */
+  i = 0;
+  while((i = src.indexOf("Economy.call(", i)) >= 0){
+    const open = i + "Economy.call(".length;
+    const close = endOfArgs(src, open);
+    const args = splitTop(src.slice(open, close));
+    i = close + 1;
+    const tail = args.length ? flatten(args[0]) : null;
+    out.push({ file, method:"POST", literal:tail ? "/nests/" + HOLE + tail : null });
   }
   return out;
 }

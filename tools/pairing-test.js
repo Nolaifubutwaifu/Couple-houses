@@ -125,32 +125,37 @@ async function person(browser, _unused, tag){
   r = await A.call("POST", "/nests/" + nestId + "/settings", { base_material:"timber", terrain_type:"sand" });
   ok("A sets the base", r.ok && r.r.nest.base_material === "timber");
 
-  /* 11. the game document is shared. A spends, B sees it. */
+  /* 11. the game document is shared. A buys and places, B sees it. Coins
+     are the database's, so spending is a purchase, not a number written. */
+  r = await A.call("POST", "/nests/" + nestId + "/shop/buy", { item:"plant", instance:"plant_pt1" });
   await A.eval(async id => {
+    await Backend.flush();
     App.ensureGame(id);
-    App.game.wallet.coins = 999;
-    App.game.house.placed.push({ instanceId:"t1", itemId:"plant", room:"living", x:2, y:2, rot:0 });
+    App.game.house.inventory = App.game.house.inventory.filter(i => i.instanceId !== "plant_pt1");
+    App.game.house.placed.push({ instanceId:"plant_pt1", itemId:"plant", room:"living", x:2, y:2, rot:0 });
     await Store.save(App.game);
   }, nestId);
   await B.page.waitForFunction(id => {
     const g = Api.db.game[id];
-    return g && g.wallet.coins === 999;
+    return g && g.house.placed.length === 1 && g.wallet.coins === 70;
   }, nestId, { timeout:20000, polling:300 }).catch(() => {});
   r = await B.call("GET", "/nests/mine");
   const bGame = await B.eval(id => { const g = Api.db.game[id]; return g && { coins:g.wallet.coins, placed:g.house.placed.length }; }, nestId);
-  ok("B reads the same game document", bGame && bGame.coins === 999 && bGame.placed === 1, JSON.stringify(bGame));
+  ok("B reads the same game document", bGame && bGame.coins === 70 && bGame.placed === 1, JSON.stringify(bGame));
 
   /* 12. B writes, A picks it up from the poll with no page action at all */
   await B.eval(async id => {
     App.ensureGame(id);
-    App.game.wallet.coins = 1234;
+    const p = App.game.house.placed.find(x => x.instanceId === "plant_pt1");
+    if(p){ p.x = 7; p.y = 4; }
     await Store.save(App.game);
   }, nestId);
   const sawIt = await A.page.waitForFunction(id => {
     const g = Api.db.game[id];
-    return g && g.wallet.coins === 1234;
+    const p = g && g.house.placed.find(x => x.instanceId === "plant_pt1");
+    return !!p && p.x === 7 && p.y === 4;
   }, nestId, { timeout:15000 }).then(() => true).catch(() => false);
-  ok("A's poll picks up B's spending", sawIt);
+  ok("A's poll picks up B's move", sawIt);
 
   /* 13. publishing runs the filter on the tagline */
   r = await B.call("POST", "/nests/" + nestId + "/publish", { tagline:"reach us at bo@nest.test" });
@@ -184,8 +189,8 @@ async function person(browser, _unused, tag){
     const n = r.ok && r.r.nests[0];
     ok(who + " can still see the frozen nest", !!n && n.id === nestId, JSON.stringify(r.r).slice(0, 120));
     ok(who + " sees both names on it", !!n && n.members.filter(m => m.name).length === 2, n && JSON.stringify(n.members));
-    const g = await p.eval(id => { const g = Api.db.game[id]; return g && g.wallet.coins; }, nestId);
-    ok(who + " can still see what they built", g === 1234, String(g));
+    const g = await p.eval(id => { const g = Api.db.game[id]; return g && g.house.placed.length; }, nestId);
+    ok(who + " can still see what they built", g === 1, String(g));
   }
 
   /* 17b. the freeze is the database's rule, not the screen's */

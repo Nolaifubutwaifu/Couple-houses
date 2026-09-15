@@ -453,6 +453,29 @@ const routes = {
     return { released:true };
   },
 
+  /* The money routes. With a database these are where coins, rooms and items
+     are decided (see src/backend.js). The local store is one browser playing
+     both people, the screens have already applied the change, and there is
+     nobody to protect it from, so they only answer, which keeps both
+     transports carrying the same calls. */
+  "POST /nests/{id}/ritual/answer"(){ return { ok:true, local:true }; },
+  "POST /nests/{id}/duel/finish"(){ return { ok:true, local:true }; },
+  "POST /nests/{id}/memory/finish"(){ return { ok:true, local:true }; },
+  "POST /nests/{id}/shop/buy"(){ return { ok:true, local:true }; },
+  "POST /nests/{id}/rooms/unlock"(){ return { ok:true, local:true }; },
+  "POST /nests/{id}/items/restore"(){ return { ok:true, local:true }; },
+
+  /* The street. With no database there is no one else on it, so the screen
+     shows the sample homes and this device's own. */
+  "GET /street"(){ return { local:true, homes:[] }; },
+  "POST /street/{id}/like"(){ return { local:true }; },
+  "POST /nests/{id}/unpublish"({ id }){
+    const g = DB.game[id];
+    if(g && g.showcase) g.showcase.published = false;
+    saveDB();
+    return { ok:true };
+  },
+
   "POST /nests/{id}/settings"({ id, base_material, terrain_type }){
     const nest = DB.nests[id];
     if(!nest) throw apiError(404, "no_nest");

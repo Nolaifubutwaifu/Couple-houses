@@ -73,34 +73,36 @@ async function guest(browser, tag){
      r.r.membership.status === "active" && r.r.members.some(m => m.user && m.user.display_name === "Ada"),
      JSON.stringify(r.r && r.r.membership));
 
-  /* 4. one house, two people */
+  /* 4. one house, two people. Coins are the database's now, so the only way
+     to spend them is to buy something, and the only way to have something is
+     to have bought it. */
   await A.call("POST", "/nests/" + nestId + "/name", { name:"Ours" });
+  r = await A.call("POST", "/nests/" + nestId + "/shop/buy", { item:"plant", instance:"plant_pair1" });
+  ok("A buys a plant with the starting coins", r.ok && r.r.coins === 70, JSON.stringify(r).slice(0, 120));
   await A.eval(async id => {
     App.ensureGame(id);
-    App.game.wallet.coins = 500;
-    App.game.house.placed.push({ instanceId:"p1", itemId:"sofa", room:"living", x:3, y:3, rot:0 });
+    App.game.house.inventory = App.game.house.inventory.filter(i => i.instanceId !== "plant_pair1");
+    App.game.house.placed.push({ instanceId:"plant_pair1", itemId:"plant", room:"living", x:3, y:3, rot:0 });
     await Store.save(App.game);
   }, nestId);
-  const sawSofa = await B.page.waitForFunction(id => {
+  const sawPlant = await B.page.waitForFunction(id => {
     const g = Api.db.game[id];
-    return g && g.house.placed.length === 1 && g.wallet.coins === 500;
+    return g && g.house.placed.some(p => p.instanceId === "plant_pair1") && g.wallet.coins === 70;
   }, nestId, { timeout:20000 }).then(() => true).catch(() => false);
-  ok("B's device sees the sofa A placed", sawSofa);
+  ok("B's device sees the plant A placed, and the coins it cost", sawPlant);
 
   await B.eval(async id => {
     App.ensureGame(id);
-    App.game.house.placed.push({ instanceId:"p2", itemId:"plant", room:"living", x:6, y:1, rot:0 });
-    App.game.wallet.coins = 460;
+    const p = App.game.house.placed.find(x => x.instanceId === "plant_pair1");
+    if(p){ p.x = 6; p.y = 1; }
     await Store.save(App.game);
   }, nestId);
-  const sawPlant = await A.page.waitForFunction(id => {
+  const sawMove = await A.page.waitForFunction(id => {
     const g = Api.db.game[id];
-    return g && g.house.placed.length === 2 && g.wallet.coins === 460;
+    const p = g && g.house.placed.find(x => x.instanceId === "plant_pair1");
+    return !!p && p.x === 6 && p.y === 1;
   }, nestId, { timeout:20000 }).then(() => true).catch(() => false);
-  ok("A's device sees B's plant and the spend", sawPlant);
-
-  const both = await A.eval(id => Api.db.game[id].house.placed.map(p => p.itemId).sort(), nestId);
-  ok("one house holds both their things", JSON.stringify(both) === '["plant","sofa"]', JSON.stringify(both));
+  ok("A's device sees B move it", sawMove);
 
   /* 5. and a guest survives a reload, which is the whole point of it being
      a real account rather than a session variable */

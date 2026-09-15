@@ -110,6 +110,9 @@ const Backend = {
     const map = {
       code_not_found:404, code_used:410, code_expired:410, own_nest:409,
       not_a_member:409, nothing_to_confirm:404, already_in_nest:409, under_age:403,
+      not_enough_coins:402, room_locked:409, frozen:409, not_paired:409, bad_day:400,
+      no_item:404, no_room:404, duplicate_instance:409, duel_unfinished:409, no_duel:404,
+      own_home:409, no_home:404,
     };
     const known = Object.keys(map).find(k => msg.indexOf(k) >= 0);
     if(known) throw apiError(map[known], known);
@@ -162,7 +165,7 @@ const Backend = {
   clone(g){ return JSON.parse(JSON.stringify(g)); },
   cache(nestId, game, rev){
     if(game){
-      Api.db.game[nestId] = game;
+      Api.db.game[nestId] = game = normalizeGame(game, nestId);
       this.rev = rev === undefined ? this.rev : rev;
       this.base = this.clone(game);
     }
@@ -191,20 +194,24 @@ const Backend = {
         await new Promise(r => setTimeout(r, 180));   // one write per burst of taps
         const doc = Api.db.game[nest];
         if(!doc || doc.frozen) break;
-        const r = await this.sb.rpc("save_game", { n:nest, doc, base_rev:this.rev });
+        const sent = this.clone(doc);
+        const r = await this.sb.rpc("save_game", { n:nest, doc:sent, base_rev:this.rev });
         if(r.error){
           console.warn("game not saved:", r.error.message);
           break;                                       // the next change tries again
         }
         if(r.data && r.data.ok){
           this.rev = r.data.rev;
-          this.base = this.clone(doc);
+          if(r.data.game) this.settle(nest, sent, r.data.game);
+          else this.base = sent;
           continue;
         }
         /* Refused, because the other person saved first. Put this device's
            change on top of theirs rather than over it, and go round again to
-           write the result. */
-        const merged = mergeGame(this.base, doc, r.data.game);
+           write the result. The wallet, the rooms and the streak are the
+           database's to decide, so those come from theirs whatever this
+           device thought. */
+        const merged = serverOwned(mergeGame(this.base, doc, r.data.game), r.data.game);
         merged.nest_id = nest;
         Api.db.game[nest] = merged;
         this.rev = r.data.rev;
@@ -214,6 +221,47 @@ const Backend = {
         this.dirty = true;
       }
     }finally{ this.saving = false; }
+  },
+
+  /* The database stores what it will stand behind, which can differ from what
+     was sent: it decides the wallet, the rooms and what the nest owns. Anything
+     this device changed while the save was in the air goes back on top. */
+  settle(nest, sent, clean){
+    const local = Api.db.game[nest];
+    const merged = serverOwned(mergeGame(sent, local, clean), clean);
+    merged.nest_id = nest;
+    this.base = this.clone(clean);
+    if(stableJSON(merged) === stableJSON(local)) return;
+    Api.db.game[nest] = merged;
+    this.epoch++;
+    Realtime.deliver({ type:"game.changed", payload:{ nest_id:nest }, from:"server" });
+  },
+  /* A money function answers with the document it wrote. If a save is under
+     way it will be refused against that revision and rebase onto it by
+     itself, so only an idle device adopts the answer directly. */
+  adopt(nest, res){
+    if(!res || !res.game || typeof res.rev !== "number" || res.rev <= this.rev) return;
+    if(this.saving || this.dirty) return;
+    const local = Api.db.game[nest];
+    const merged = serverOwned(mergeGame(this.base, local, res.game), res.game);
+    merged.nest_id = nest;
+    this.rev = res.rev;
+    this.base = this.clone(res.game);
+    Api.db.game[nest] = merged;
+    this.epoch++;
+    Realtime.deliver({ type:"game.changed", payload:{ nest_id:nest }, from:"server" });
+  },
+  /* Wait for the save loop to empty, for the calls that read the stored
+     document rather than the one on this device. */
+  async flush(ms){
+    const until = Date.now() + (ms || 6000);
+    while((this.saving || this.dirty) && Date.now() < until) await new Promise(r => setTimeout(r, 60));
+  },
+  async money(nest, fn, args, fallback){
+    this.need();
+    const out = this.ok(await this.sb.rpc(fn, args), fallback);
+    this.adopt(nest, out);
+    return out;
   },
 
   /* ---------- one pair of hands at a time ---------- */
@@ -376,36 +424,18 @@ const BROUTES = {
     return { user:p, is_new:!p.display_name };
   },
 
+  /* The age check is decided by the database, which stores the name and the
+     date only for somebody old enough. A refusal comes back as a value, so the
+     flag that keeps it from being a retry loop is not rolled back with it. */
   async "POST /users/me"({ display_name, birthdate }){
     this.need();
     const name = (display_name || "").trim();
     if(name.length < 1 || name.length > 24) throw apiError(400, "bad_name");
     if(!birthdate) throw apiError(400, "bad_birthdate");
-    const age = ageOf(birthdate);
-    /* Age is decided here, before anything is written. A row that fails the
-       check keeps neither the name nor the date: the screen it leads to says
-       the rule is about how personal information is handled, and storing a
-       self declared minor's name and date of birth on the way to saying so is
-       exactly what it promises not to do. */
-    if(age < MIN_AGE){
-      /* age_blocked is the whole of what a refusal leaves behind, and a
-         project that predates it has not got the column. Clearing the name
-         and the date is the part that must not be skipped, so that write goes
-         first and the flag is added on top where it exists. Without it the
-         block still refuses, it just stops surviving a second attempt, and
-         docs/backend.sql carries the one line that fixes that. */
-      await this.sb.from("profiles")
-        .update({ display_name:null, birthdate:null, age_verified:false })
-        .eq("id", this.uid);
-      await this.sb.from("profiles").update({ age_blocked:true }).eq("id", this.uid);
-      throw apiError(403, "under_age", { min_age:MIN_AGE });
-    }
-    const p = this.ok(await this.sb.from("profiles").update({
-      display_name:name, birthdate, age_verified:true,
-      locale: navigator.language || "en",
-    }).eq("id", this.uid).select().single(), "save_failed");
-    await this.sb.from("profiles").update({ age_blocked:false }).eq("id", this.uid);
-    return { user:p };
+    const r = this.ok(await this.sb.rpc("set_profile",
+      { display_name:name, birthdate, locale:navigator.language || "en" }), "save_failed");
+    if(r && r.error === "under_age") throw apiError(403, "under_age", { min_age:MIN_AGE });
+    return { user:r.user };
   },
 
   async "POST /nests"(){
@@ -570,13 +600,25 @@ const BROUTES = {
     return { deleted:true };
   },
 
+  /* Publishing, the filter and the charm are the database's. A refusal names
+     its reason, which the screen shows as it is. */
   async "POST /nests/{id}/publish"({ id, tagline }){
     this.need();
-    const check = moderate(tagline);
-    if(!check.ok) throw apiError(422, "rejected", { reason:check.reason });
-    const g = Api.db.game[id];
-    if(g){ g.showcase.tagline = check.text; g.showcase.published = true; await this.saveGame(g); }
-    return { tagline:check.text };
+    const out = this.ok(await this.sb.rpc("publish_home", { n:id, tagline:tagline || "" }), "publish_failed");
+    if(!out.ok) throw apiError(422, "rejected", { reason:out.reason });
+    this.adopt(id, out);
+    return { tagline:out.tagline };
+  },
+  async "POST /nests/{id}/unpublish"({ id }){
+    return this.money(id, "unpublish_home", { n:id }, "unpublish_failed");
+  },
+  async "GET /street"(){
+    this.need();
+    return { homes: this.ok(await this.sb.rpc("list_street", { lim:40 }), "street_failed") || [] };
+  },
+  async "POST /street/{id}/like"({ id }){
+    this.need();
+    return this.ok(await this.sb.rpc("toggle_like", { target:id }), "like_failed");
   },
 
   async "POST /nests/{id}/report"({ id, reason }){
@@ -606,6 +648,39 @@ const BROUTES = {
     const p = await this.profile();
     const r = await this.sb.from("reports").select("id", { count:"exact", head:true }).eq("status", "open");
     return { blocked:(p && p.blocked) || [], contact:CONTACT_EMAIL, open_reports:r.count || 0 };
+  },
+
+  /* The money routes. Every one of them is a database function that holds the
+     nest row while it checks the cap or the price, so two phones cannot both
+     spend the same coins or both claim the same day. */
+  async "POST /nests/{id}/ritual/answer"({ id, day, answer }){
+    return this.money(id, "answer_ritual", { n:id, d:day, a:answer }, "ritual_failed");
+  },
+  async "POST /nests/{id}/duel/finish"({ id, day }){
+    this.need();
+    // the duel is paid from the stored round, so the save that finished it goes first
+    await this.flush();
+    let r = await this.sb.rpc("finish_duel", { n:id, d:day });
+    if(r.error && /duel_unfinished|no_duel/.test(r.error.message || "")){
+      await new Promise(res => setTimeout(res, 900));
+      await this.flush();
+      r = await this.sb.rpc("finish_duel", { n:id, d:day });
+    }
+    const out = this.ok(r, "duel_failed");
+    this.adopt(id, out);
+    return out;
+  },
+  async "POST /nests/{id}/memory/finish"({ id, day, moves }){
+    return this.money(id, "finish_memory", { n:id, d:day, moves }, "memory_failed");
+  },
+  async "POST /nests/{id}/shop/buy"({ id, item, instance }){
+    return this.money(id, "buy_item", { n:id, item, instance }, "buy_failed");
+  },
+  async "POST /nests/{id}/rooms/unlock"({ id, room }){
+    return this.money(id, "unlock_room", { n:id, room }, "unlock_failed");
+  },
+  async "POST /nests/{id}/items/restore"({ id }){
+    return this.money(id, "restore_items", { n:id }, "restore_failed");
   },
 
   async "GET /nests/archived"(){
