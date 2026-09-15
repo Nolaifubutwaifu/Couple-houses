@@ -19,8 +19,7 @@ const Store = {
   },
   async listShowcase(g){
     const mine = g && g.showcase.published ? [ownCard(g)] : [];
-    const seeds = SEED_HOUSES.map(h => ({ ...h, mine:false,
-      placed:h.placed.map(p => ({ itemId:p[0], room:p[1], x:p[2], y:p[3], rot:p[4] || 0, instanceId:"s" + Math.random() })) }));
+    const seeds = seedCards();
     return [...mine, ...seeds].map(h => ({ ...h, charm:charmOf(h.placed) })).sort((a, b) => b.charm - a.charm);
   },
   async likeHouse(g, id){
@@ -60,6 +59,34 @@ const SEED_HOUSES = [
             ["stove","kitchen",1,1],["fridge","kitchen",4,1],["table","kitchen",3,4]] },
 ];
 
+/* The sample homes as street cards. They fill the street until there are
+   enough real couples on it, and they say what they are. */
+function seedCards(){
+  return SEED_HOUSES.map(h => ({ ...h, mine:false, sample:true,
+    placed:h.placed.map((p, i) => ({ itemId:p[0], room:p[1], x:p[2], y:p[3], rot:p[4] || 0, instanceId:h.id + "_" + i })) }))
+    .map(h => ({ ...h, charm:charmOf(h.placed) }));
+}
+/* The street from the database when there is one, topped up with sample
+   homes while it is still quiet. Hearts on a sample home are this device's
+   own; hearts on a real one are counted once per person by the database. */
+async function loadStreet(){
+  let real = null;
+  try{ real = await Api.call("GET", "/street"); }catch(err){ real = null; }
+  if(!real || real.local) return (await Store.listShowcase(state)).map(h => ({ ...h, local:true }));
+  const homes = (real.homes || []).map(h => ({ ...h, placed:h.placed || [], tagline:h.tagline || "" }));
+  const fill = homes.length >= 6 ? [] : seedCards().slice(0, 6 - homes.length);
+  return homes.concat(fill).sort((a, b) => b.charm - a.charm);
+}
+function heartOf(h){ return h.sample || h.local ? state.showcase.likesGiven.includes(h.id) : !!h.liked; }
+function heartsOf(h){ return h.sample || h.local ? h.likes + (heartOf(h) ? 1 : 0) : h.likes; }
+async function toggleHeart(h){
+  if(h.sample || h.local) return Store.likeHouse(state, h.id);
+  try{
+    const r = await Api.call("POST", "/street/" + h.id + "/like", {});
+    h.liked = r.liked; h.likes = r.likes;
+  }catch(err){ toast(err.code === "own_home" ? "That one is yours" : "That did not go through. Try again?"); }
+}
+
 const GAME_ICON = { ritual:"clock", duel:"heartst", memory:"cat" };
 
 /* ---- state ---- */
@@ -71,7 +98,7 @@ let viewingLot = null;
 
 function newGame(nest){
   const rooms = {};
-  ROOMS.forEach(r => { rooms[r.id] = { unlocked:r.price === 0 }; });
+  (typeof ROOMS !== "undefined" ? ROOMS : [{ id:"living", price:0 }]).forEach(r => { rooms[r.id] = { unlocked:r.price === 0 }; });
   return {
     version:GAME_VERSION, nest_id:nest.id,
     wallet:{ coins:BALANCE.startingCoins, lifetimeEarned:0 },
@@ -88,6 +115,27 @@ function newGame(nest){
     stats:{ gamesPlayed:0, duelsPlayed:0, bestDuel:0 },
     ceremony_pending:false,
   };
+}
+
+/* A document the database wrote from scratch carries only what the database
+   decides: the wallet, the rooms, what is owned. Every section the screens
+   and the merge read gets its default here, so nothing reaches into a part of
+   the document that is not there. */
+function normalizeGame(g, nestId){
+  const id = nestId || (g && g.nest_id);
+  const base = newGame({ id });
+  if(!g || typeof g !== "object") return base;
+  const obj = v => (v && typeof v === "object" && !Array.isArray(v)) ? v : {};
+  const out = { ...base, ...g };
+  ["wallet", "streak", "daily", "showcase", "stats"].forEach(k => { out[k] = { ...base[k], ...obj(g[k]) }; });
+  const house = obj(g.house);
+  out.house = { ...base.house, ...house, rooms:{ ...base.house.rooms, ...obj(house.rooms) } };
+  out.house.inventory = Array.isArray(house.inventory) ? house.inventory : [];
+  out.house.placed = Array.isArray(house.placed) ? house.placed : [];
+  out.showcase.likesGiven = Array.isArray(out.showcase.likesGiven) ? out.showcase.likesGiven : [];
+  out.plan = Array.isArray(g.plan) ? g.plan : [];
+  out.nest_id = id;
+  return out;
 }
 
 /* An instanceId is the only handle a placed thing has, and pick up removes
@@ -123,7 +171,9 @@ function repairInstanceIds(g){
    makes one partner's afternoon disappear, so nothing here overwrites a field
    it did not change. */
 function mergeGame(base, mine, theirs){
-  if(!base) return theirs;                      // nothing to rebase, take the truth
+  theirs = normalizeGame(theirs);
+  if(!base || !mine) return theirs;             // nothing to rebase, take the truth
+  base = normalizeGame(base); mine = normalizeGame(mine);
   const out = JSON.parse(JSON.stringify(theirs));
   const delta = (b, m) => (m || 0) - (b || 0);
 
@@ -208,6 +258,49 @@ function mergeStreak(mine, theirs){
    page take a permission back, so the honest switch is our own: the
    permission if we do not have it, and a mute of our own that notify()
    obeys if we do. */
+/* Once there is a database it is the only authority on money: the wallet,
+   the bond, the streak, which rooms are open and how many plays are left
+   today. Any merge on this device keeps those from the database's copy. */
+function serverOwned(merged, truth){
+  if(!merged || !truth) return merged;
+  if(truth.wallet) merged.wallet = { ...truth.wallet };
+  if(truth.bond !== undefined) merged.bond = truth.bond;
+  if(truth.firstRitualPaid !== undefined) merged.firstRitualPaid = truth.firstRitualPaid;
+  if(truth.streak){
+    merged.streak = { ...(merged.streak || {}), count:truth.streak.count, lastCheckIn:truth.streak.lastCheckIn };
+    if(truth.streak.day === merged.streak.day) ["a", "b"].forEach(k => {
+      const v = truth.streak[k + "Ans"];
+      if(v !== null && v !== undefined){ merged.streak[k + "Ans"] = v; merged.streak[k] = true; }
+    });
+  }
+  if(truth.house && truth.house.rooms && merged.house) merged.house.rooms = JSON.parse(JSON.stringify(truth.house.rooms));
+  if(truth.daily && merged.daily && truth.daily.day === merged.daily.day) merged.daily = { ...truth.daily };
+  return merged;
+}
+/* Key order is not meaning. jsonb hands keys back in its own order, so two
+   identical documents can stringify differently. */
+function stableJSON(v){
+  if(Array.isArray(v)) return "[" + v.map(stableJSON).join(",") + "]";
+  if(v && typeof v === "object") return "{" + Object.keys(v).sort().map(k => JSON.stringify(k) + ":" + stableJSON(v[k])).join(",") + "}";
+  return JSON.stringify(v === undefined ? null : v);
+}
+
+/* The screens show a change the moment it is made. This is where it is
+   confirmed: with a database the answer is the truth and is adopted by the
+   transport, and a refusal is handed back so the screen can undo itself. */
+const Economy = {
+  async call(path, body){
+    if(!App.me || !App.me.nest) return null;
+    try{ return await Api.call("POST", "/nests/" + App.me.nest.id + path, body || {}); }
+    catch(err){ return { error:err.code || "failed" }; }
+  },
+  refusal(code){
+    return ({ not_enough_coins:"Not enough coins", room_locked:"Unlock that room first",
+              frozen:"This nest is frozen", not_paired:"Your partner needs to be here" })[code]
+      || "That did not go through. Try again?";
+  },
+};
+
 const Push = {
   KEY:"nest.push_muted",
   muted(){
@@ -290,7 +383,7 @@ const App = {
   me:null, get game(){ return liveGame(); },
 
   ensureGame(nestId){
-    if(!Api.db.game[nestId]) Api.db.game[nestId] = newGame({ id:nestId });
+    Api.db.game[nestId] = Api.db.game[nestId] ? normalizeGame(Api.db.game[nestId], nestId) : newGame({ id:nestId });
     state = Api.db.game[nestId];
     state.nest_id = nestId;
     if(repairInstanceIds(state)) Store.save(state);
@@ -327,6 +420,7 @@ const App = {
     state.couple = this.couple(me);
     render();
     refreshWorld();
+    Economy.call("/items/restore");          // anything owned the document lost, back into storage
     Api.Realtime.on(msg => {
       if(!state || msg.payload.nest_id !== state.nest_id) return;
       if(msg.type === "game.changed"){
@@ -640,7 +734,7 @@ function refreshWorld(){
     rooms.living.unlocked = true;
     const names = viewingLot.partners.split(" and ");
     Diorama.setLot({ rooms, placed:viewingLot.placed }, { partnerA:names[0], partnerB:names[1] }, viewingLot.tagline);
-    Diorama.applyState(viewingLot.stateId || "steady", season);
+    Diorama.applyState(viewingLot.stateId || viewingLot.state || "steady", season);
     Diorama.setPlan(null);                      // somebody else's house, not your sketch
     return;
   }
@@ -792,6 +886,14 @@ function screenBuild(root){
       state.house.rooms[r.id].unlocked = true;
       shopFilter = r.id;
       save(); refreshWorld(); toast(r.name + " built"); render();
+      Economy.call("/rooms/unlock", { room:r.id }).then(res => {
+        if(!res || !res.error) return;
+        liveGame();
+        state.house.rooms[r.id].unlocked = false;
+        if(shopFilter === r.id) shopFilter = "living";
+        save(); refreshWorld(); render();
+        toast(Economy.refusal(res.error));
+      });
     };
     chips.appendChild(b);
   });
@@ -863,8 +965,17 @@ function screenBuild(root){
       <button class="btn sm ${afford ? "go" : ""}" ${afford ? "" : "disabled"}>${item.price}</button></div>`);
     c.querySelector("button").onclick = () => {
       if(!spend(item.price)) return toast("Not enough coins");
-      state.house.inventory.push({ instanceId:uid(), itemId:item.id });
+      const instanceId = item.id + "_" + uid();
+      state.house.inventory.push({ instanceId, itemId:item.id });
       save(); toast(item.name + " delivered"); render();
+      Economy.call("/shop/buy", { item:item.id, instance:instanceId }).then(res => {
+        if(!res || !res.error) return;
+        liveGame();
+        state.house.inventory = state.house.inventory.filter(i => i.instanceId !== instanceId);
+        if(held && held.instanceId === instanceId){ held = null; Diorama.setHeld(null); }
+        save(); render();
+        toast(Economy.refusal(res.error));
+      });
     };
     grid.appendChild(c);
   });
@@ -903,7 +1014,7 @@ function reportSheet(h){
 async function screenShowcase(root){
   if(route.view && route.view.house){
     const h = route.view.house;
-    const liked = state.showcase.likesGiven.includes(h.id);
+    const liked = heartOf(h);
     const back = el(`<button class="btn back">The street</button>`);
     back.onclick = () => { viewingLot = null; refreshWorld(); go("show"); };
     root.appendChild(back);
@@ -911,10 +1022,12 @@ async function screenShowcase(root){
       <p class="s dim">${esc(h.partners)} · ${daysTogether(h.since).toLocaleString()} days together</p>
       <p class="s">${esc(h.tagline)}</p>
       <div class="spread" style="margin-top:10px"><span class="chip warm">${h.charm} charm</span>
-      <span class="chip">${(h.likes + (liked ? 1 : 0)).toLocaleString()} hearts given</span></div></div>`));
+      <span class="chip">${heartsOf(h).toLocaleString()} hearts given</span></div>
+      ${h.sample ? '<p class="s dim" style="margin-top:8px">A sample home, here until the street fills up.</p>' : ""}
+      ${h.mine && h.hidden ? '<p class="s dim" style="margin-top:8px">Hidden from the street while reports about it are reviewed.</p>' : ""}</div>`));
     if(!h.mine){
       const b = el(`<button class="btn ${liked ? "" : "go"}">${liked ? "Loved" : "Leave a heart"}</button>`);
-      b.onclick = async () => { await Store.likeHouse(state, h.id); render(); };
+      b.onclick = async () => { b.disabled = true; await toggleHeart(h); render(); };
       root.appendChild(b);
       const row = el(`<div class="ob-row2" style="margin-top:9px">
         <button class="btn sm" id="rep">Report</button>
@@ -928,11 +1041,23 @@ async function screenShowcase(root){
         viewingLot = null; refreshWorld(); go("show");
       };
       root.appendChild(row);
+    }else if(App.me && App.me.nest){
+      const off = el(`<button class="btn" style="margin-top:9px;width:100%">Take it off the street</button>`);
+      off.onclick = async () => {
+        off.disabled = true;
+        try{ await Api.call("POST", "/nests/" + App.me.nest.id + "/unpublish", {}); }
+        catch(err){ off.disabled = false; return toast("That did not go through. Try again?"); }
+        liveGame();
+        state.showcase.published = false;
+        save(); toast("Your nest is private again");
+        viewingLot = null; refreshWorld(); go("show");
+      };
+      root.appendChild(off);
     }
     return;
   }
 
-  root.appendChild(el(`<p class="note">A local preview of the street. Real couples appear once NEST goes online.</p>`));
+  if(!Api.backend) root.appendChild(el(`<p class="note">A local preview of the street. Real couples appear once NEST goes online.</p>`));
   const mod = await Api.call("GET", "/moderation");
   if(!state.showcase.published){
     const c = el(`<div class="card"><p class="h">Your nest is private</p>
@@ -956,16 +1081,15 @@ async function screenShowcase(root){
     root.appendChild(c);
   }
 
-  const all = await Store.listShowcase(state);
+  const all = await loadStreet();
   const houses = all.filter(h => mod.blocked.indexOf(h.id) < 0);
   const hidden = all.length - houses.length;
   houses.forEach((h, i) => {
-    const liked = state.showcase.likesGiven.includes(h.id);
     const card = el(`<button class="hcard">
       <img src="${Offscreen.lotThumb(h.placed, 260, seasonNow().ground)}" alt="">
       <div class="meta"><div class="spread"><p class="h">${esc(h.name)}</p><span class="chip warm">${h.charm}</span></div>
-      <p class="s dim">${esc(h.partners)} · ${daysTogether(h.since).toLocaleString()} days${h.mine ? " · yours" : ""}</p>
-      <p class="s">${esc(h.tagline)} <span class="dim">· ${(h.likes + (liked ? 1 : 0)).toLocaleString()} hearts</span></p></div>
+      <p class="s dim">${esc(h.partners)} · ${daysTogether(h.since).toLocaleString()} days${h.mine ? " · yours" : h.sample ? " · sample home" : ""}</p>
+      <p class="s">${esc(h.tagline)} <span class="dim">· ${heartsOf(h).toLocaleString()} hearts</span></p></div>
       <span class="rank">${i + 1}</span></button>`);
     card.onclick = () => { viewingLot = h; refreshWorld(); go("show", { house:h }); };
     root.appendChild(card);

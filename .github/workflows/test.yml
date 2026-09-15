@@ -1,0 +1,26 @@
+name: tests
+
+# The suites that need no database run on every push and pull request. The
+# four that pair real accounts against the live project are left to a person,
+# because each run creates accounts there.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: syntax
+        run: for f in src/*.js tools/*.js; do node --check "$f"; done
+      - name: suites
+        run: node tools/run-all.js parity merge catalogue local handoff entry two-phones solo
