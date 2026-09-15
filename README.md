@@ -107,8 +107,10 @@ Honest list, so nobody mistakes a shortcut for a decision.
   increments only" and that there is "no free camera", so that every screenshot
   a player takes is composed. That was overridden deliberately: the dome now
   follows your finger, a flick carries momentum, and it rests wherever you let
-  go. Tilt stays locked at 32 degrees and roll is still impossible, so the two
-  rules doing the most work survive. The arrows remain and are more useful than
+  go. Tilt is free too now: dragging up and down raises and lowers the camera
+  between 8 and 80 degrees, and tapping **home** eases it back to the
+  composed 32. Roll is still impossible, and the clamps keep it a small
+  object seen from outside rather than a floor plan or a view from the grass. The arrows remain and are more useful than
   before, taking you to the next quarter turn from any resting angle, which is
   still the fastest way to a framed shot. The consequence was handled rather
   than ignored: the asset review now samples eight yaws instead of four,
