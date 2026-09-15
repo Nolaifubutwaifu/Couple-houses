@@ -370,3 +370,205 @@ grant execute on function public.delete_me()                          to authent
 alter table profiles add column if not exists age_blocked boolean not null default false;
 revoke execute on function public.peek_invite(text) from public;
 grant execute on function public.peek_invite(text) to authenticated, anon;
+
+/* ---------------- the shared document, and who is holding it ----------------
+   Five more functions and three more columns, applied to the live project as
+   two later migrations on 2026-09-08 and 2026-09-09. The columns are alters
+   rather than part of `create table nests` above, so that the file stays what
+   it claims to be, a record of what was actually run, and so that a project
+   which already has them can run these lines and change nothing. Either way
+   the file goes top to bottom on an empty project and ends at the live
+   schema.
+
+   The one idea underneath all five: the nest document is written by two
+   devices that cannot see each other, so neither of them is allowed to be the
+   authority on anything. The database numbers the revisions, the database
+   hands out the lock, and the client is told what is true rather than telling
+   it. */
+
+alter table nests add column if not exists game_rev      integer not null default 0;
+alter table nests add column if not exists builder       uuid references auth.users(id);
+alter table nests add column if not exists builder_until timestamptz;
+
+/* Everything the waiting screens ask for, in one answer. It was six queries
+   one after another, which is survivable once and ruinous on a screen that
+   asks every couple of seconds while somebody watches it: the calls overlap,
+   the queue grows, and a person waits half a minute to be let into their own
+   nest.
+
+   The game document is deliberately left out of the nest it returns, which is
+   what `to_jsonb(n) - 'game'` is for: it is the big field, it is fetched on
+   its own when the revision says it moved, and a poll that carried it would
+   send the whole house down the wire every few seconds.
+
+   No session, or a profile that has been through delete_me, is not an error
+   here. It returns `user: null`, because the caller is the boot path and the
+   honest answer to "who is this" is nobody. */
+create or replace function public.nest_snapshot() returns json
+  language plpgsql stable security definer set search_path to 'public' as $$
+declare me uuid := auth.uid(); prof profiles; m memberships; n nests;
+begin
+  if me is null then return json_build_object('user', null); end if;
+  select * into prof from profiles where id = me;
+  if prof is null or prof.deleted then return json_build_object('user', null); end if;
+
+  select * into m from memberships
+   where user_id = me and status <> 'left' limit 1;
+  if m.id is null then return json_build_object('user', to_json(prof), 'nest', null); end if;
+
+  select * into n from nests where id = m.nest_id;
+  if n.id is null or n.status = 'archived' then
+    return json_build_object('user', to_json(prof), 'nest', null);
+  end if;
+
+  return json_build_object(
+    'user', to_json(prof),
+    'nest', to_jsonb(n) - 'game',
+    'membership', to_json(m),
+    'members', (
+      select coalesce(json_agg(json_build_object(
+               'id', x.id, 'nest_id', x.nest_id, 'user_id', x.user_id, 'role', x.role,
+               'status', x.status, 'joined_at', x.joined_at, 'created_at', x.created_at,
+               'user', (select to_json(p) from profiles p where p.id = x.user_id))), '[]'::json)
+      from memberships x where x.nest_id = n.id and x.status <> 'left'),
+    'invite', (
+      select to_json(i) from invites i
+       where i.nest_id = n.id and i.status = 'open' and i.expires_at > now() limit 1),
+    'pending_partner', (
+      select to_json(p) from memberships x join profiles p on p.id = x.user_id
+       where x.nest_id = n.id and x.status = 'invited' limit 1)
+  );
+end $$;
+
+/* Two people, one house, and until this was written two clients each counting
+   their own revisions. Both start from nothing, both call their first save
+   rev 1, and from then on neither document ever looks newer than the other,
+   so the two rooms drift apart and never come back. A revision is only
+   meaningful if one place issues it, so the database issues it.
+
+   The comparison is `base_rev is distinct from cur`, and it is exact on
+   purpose. Not >=, not "near enough", and not a null that slips through: a
+   save is accepted only if it was built on precisely the revision that is
+   currently stored, and any other value, older or newer or missing, is
+   refused. That strictness is the whole contract the client is built on.
+   mergeGame in src/app.js is a three way merge of base, mine and theirs, and
+   it is only correct because `base` really is the document this device last
+   saw agreed. If a stale save were let through on a >= test, or a save with a
+   base the server never issued, the other person's change would be gone and
+   the merge would never run at all.
+
+   A refusal is not an exception. It returns ok:false with the current
+   revision and the current document, which is exactly what the caller needs
+   to rebase onto and retry, so the round trip that discovers the conflict is
+   also the round trip that resolves it. Saving in src/backend.js loops on
+   that: merge, write, and go round again if somebody moved in the meantime.
+
+   `for update` holds the row for the length of the call, so two saves landing
+   together are serialised rather than both reading the same `cur` and one of
+   them winning by arriving second. streak_count is mirrored out of the
+   document because the waiting screens read it from the nest row and never
+   fetch the document to get it. */
+create or replace function public.save_game(n uuid, doc jsonb, base_rev integer) returns json
+  language plpgsql security definer set search_path to 'public' as $$
+declare cur integer; is_frozen boolean;
+begin
+  if not nest_private.is_member_of(n) then raise exception 'not_a_member'; end if;
+  select game_rev, frozen into cur, is_frozen from nests where id = n for update;
+  if cur is null then raise exception 'no_nest'; end if;
+  if is_frozen then raise exception 'frozen'; end if;
+  if base_rev is distinct from cur then
+    -- somebody moved first. Hand back what is actually there so the caller
+    -- can put its change on top of the truth instead of over it.
+    return json_build_object('ok', false, 'rev', cur,
+                             'game', (select game from nests where id = n));
+  end if;
+  update nests set game = doc, game_rev = cur + 1, updated_at = now(),
+                   streak_count = coalesce((doc->'streak'->>'count')::int, streak_count)
+   where id = n;
+  return json_build_object('ok', true, 'rev', cur + 1);
+end $$;
+
+/* The small question, asked every few seconds. It answers with the revision
+   rather than the document, so the client can tell whether there is anything
+   worth fetching, and fetch the game only when there is.
+
+   It tests ever_member_of rather than is_member_of, matching the read policy
+   on nests: freezing sets both memberships to 'left', and both people are
+   still meant to be able to sit and look at what they built.
+
+   An expired lock is nobody's, and that is decided here rather than by the
+   two clients each comparing a timestamp to their own clock, which is how a
+   phone with a slow clock ends up believing the lock is still held while the
+   other person is already building. */
+create or replace function public.nest_pulse(n uuid) returns json
+  language plpgsql stable security definer set search_path to 'public' as $$
+declare r record;
+begin
+  if not nest_private.ever_member_of(n) then raise exception 'not_a_member'; end if;
+  select ns.game_rev, ns.name, ns.status, ns.frozen, ns.updated_at,
+         case when ns.builder_until > now() then ns.builder end as builder,
+         case when ns.builder_until > now() then ns.builder_until end as builder_until
+    into r from nests ns where ns.id = n;
+  return json_build_object(
+    'rev', r.game_rev, 'name', r.name, 'status', r.status, 'frozen', r.frozen,
+    'updated_at', r.updated_at, 'builder', r.builder, 'builder_until', r.builder_until,
+    'builder_name', (select display_name from profiles where id = r.builder));
+end $$;
+
+/* One pair of hands in the house at a time. Not a correctness device, because
+   save_game already refuses anything built on a stale revision; this is so
+   that two people do not spend the same coins dragging the same sofa about
+   and then watch a merge decide between them.
+
+   A lease rather than a lock: it expires by itself after `seconds`, so a
+   phone that is put in a pocket mid build does not leave the other person
+   locked out forever. Taking it is idempotent for whoever already holds it,
+   which is what lets the client top the lease up while a build is still going
+   on. `for update` again, so the two calls that arrive together do not both
+   read an empty builder and both come back mine:true.
+
+   Refusal is a value, not an exception: mine:false with the other person's
+   name, because the screen says who is building rather than that something
+   failed. */
+create or replace function public.take_build_lock(n uuid, seconds integer default 40) returns json
+  language plpgsql security definer set search_path to 'public' as $$
+declare b uuid; bu timestamptz; nm text;
+begin
+  if not nest_private.is_member_of(n) then raise exception 'not_a_member'; end if;
+  select builder, builder_until into b, bu from nests where id = n for update;
+  if b is not null and b <> auth.uid() and bu > now() then
+    select display_name into nm from profiles where id = b;
+    return json_build_object('mine', false, 'builder', b, 'builder_name', nm, 'until', bu);
+  end if;
+  update nests set builder = auth.uid(), builder_until = now() + make_interval(secs => seconds)
+   where id = n;
+  return json_build_object('mine', true, 'builder', auth.uid(),
+                           'until', now() + make_interval(secs => seconds));
+end $$;
+
+/* Handing it back early, so the other person does not wait out the lease for
+   nothing. The `builder = auth.uid()` in the where clause is the point of it:
+   you can only drop your own lock, never somebody else's, so a device that
+   releases late, after the lease has already expired and the other person has
+   taken it, clears nothing. */
+create or replace function public.release_build_lock(n uuid) returns json
+  language plpgsql security definer set search_path to 'public' as $$
+begin
+  if not nest_private.is_member_of(n) then raise exception 'not_a_member'; end if;
+  update nests set builder = null, builder_until = null
+   where id = n and builder = auth.uid();
+  return json_build_object('released', true);
+end $$;
+
+/* Same rule as the seven above: these are definer functions, so nothing but
+   a signed in caller may reach them, and anon gets none of them. */
+revoke execute on function public.nest_snapshot()                     from anon, public;
+revoke execute on function public.save_game(uuid, jsonb, integer)     from anon, public;
+revoke execute on function public.nest_pulse(uuid)                    from anon, public;
+revoke execute on function public.take_build_lock(uuid, integer)      from anon, public;
+revoke execute on function public.release_build_lock(uuid)            from anon, public;
+grant execute on function public.nest_snapshot()                        to authenticated;
+grant execute on function public.save_game(uuid, jsonb, integer)        to authenticated;
+grant execute on function public.nest_pulse(uuid)                       to authenticated;
+grant execute on function public.take_build_lock(uuid, integer)         to authenticated;
+grant execute on function public.release_build_lock(uuid)               to authenticated;
