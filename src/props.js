@@ -638,6 +638,182 @@ const CATALOGUE = [
       g.add(dome);
       g.add(cyl(0.03, 0.03, 0.04, "cocoa", 0, 0.4, 0, 8));
     } },
+  /* ---- third wave. Cheap things for the first week, so the shop is never
+     shut on a day with coins in hand, and a few more mementos, because that
+     is where charm lives. Each was shaped to its own silhouette. ---- */
+
+  /* LIVING */
+  { id:"recordpl", name:"Record Player", price:640, charm:10, w:2, h:1, room:"living", cls:"medium", build(g){
+      g.add(box(0.82, 0.48, 0.4, "warmSand", 0, 0.16, 0));
+      [-0.34, 0.34].forEach(x => g.add(box(0.07, 0.16, 0.07, "cocoa", x, 0, 0)));
+      g.add(box(0.86, 0.05, 0.44, "cocoa", 0, 0.64, 0));
+      g.add(cyl(0.16, 0.16, 0.02, "ink", -0.12, 0.69, 0, 20));
+      g.add(cyl(0.05, 0.05, 0.024, "coral", -0.12, 0.69, 0, 12));
+      g.add(box(0.03, 0.03, 0.24, "cream", 0.16, 0.72, 0.02, { ry:0.5 }));
+      g.add(box(0.78, 0.4, 0.03, "mist", 0, 0.66, -0.22, { rx:-0.35 }));    // the lid stands open behind
+      [-0.2, 0.2].forEach(x => g.add(box(0.3, 0.3, 0.02, "oat", x, 0.25, 0.21)));
+    } },
+  { id:"beanbag", name:"Beanbag", price:330, charm:6, w:2, h:2, room:"living", cls:"medium", build(g){
+      const seat = new THREE.Group();
+      seat.add(ball(0.4, "lilac", 0, 0, 0, 14));
+      seat.scale.set(1.12, 0.6, 1.08);
+      seat.position.set(0, 0.24, 0.04);
+      g.add(seat);
+      const back = new THREE.Group();
+      back.add(ball(0.3, "lilac", 0, 0, 0, 12));
+      back.scale.set(1.15, 1.0, 0.7);
+      back.position.set(0, 0.48, -0.24);
+      g.add(back);
+      g.add(box(0.3, 0.08, 0.22, "butter", 0.14, 0.42, 0.12, { rx:-0.3, fabric:true }));
+    } },
+  /* Open legs and an overhanging hood with a lamp arm: a tank on a solid stand
+     is the television at 64 pixels, and section 16 said so. */
+  { id:"aquarium", name:"Aquarium", price:1120, charm:17, w:3, h:1, room:"living", cls:"large", build(g){
+      [-0.5, 0.5].forEach(x => [-0.14, 0.14].forEach(z => g.add(box(0.06, 0.52, 0.06, "cocoa", x, 0, z))));
+      g.add(box(1.1, 0.06, 0.36, "cocoa", 0, 0.5, 0));
+      g.add(box(0.5, 0.05, 0.3, "cocoa", 0, 0.16, 0));               // a low shelf, open below and above
+      g.add(box(1.04, 0.7, 0.34, "mist", 0, 0.56, 0));
+      g.add(box(0.92, 0.08, 0.26, "warmSand", 0, 0.6, 0));
+      [[-0.32, 0.46], [-0.22, 0.32], [0.36, 0.52]].forEach(([x, h]) =>
+        g.add(box(0.06, h, 0.05, "sage", x, 0.66, -0.05, { sway:0.08 })));
+      [[-0.06, 0.92], [0.2, 1.04]].forEach(([x, y]) =>
+        g.add(box(0.14, 0.08, 0.05, "marigold", x, y, 0.06, { centred:true, sway:0.05 })));
+      g.add(box(1.2, 0.1, 0.42, "ink", 0, 1.26, 0, { rx:0.0 }));     // hood overhangs the glass
+      g.add(box(0.05, 0.36, 0.05, "ink", 0.52, 1.34, 0));            // lamp arm rising off one corner
+      g.add(box(0.26, 0.05, 0.14, "ink", 0.42, 1.68, 0, { rz:-0.3 }));
+    } },
+
+  /* KITCHEN */
+  { id:"fruit", name:"Fruit Bowl", price:160, charm:3, w:1, h:1, room:"kitchen", cls:"small", build(g){
+      g.add(cyl(0.22, 0.12, 0.12, "cream", 0, 0, 0, 16));
+      [[0.07, 0.03, "peach"], [-0.08, 0.04, "butter"], [0.0, -0.09, "sage"]].forEach(([x, z, c]) =>
+        g.add(ball(0.075, c, x, 0.16, z, 10)));
+      g.add(ball(0.07, "blush", 0.02, 0.27, 0, 10));
+      g.add(box(0.26, 0.05, 0.06, "butter", -0.2, 0.2, 0.06, { rz:0.7 }));     // a banana over the rim
+    } },
+  { id:"trolley", name:"Tea Trolley", price:520, charm:9, w:2, h:1, room:"kitchen", cls:"medium", build(g){
+      [0.18, 0.62].forEach(y => g.add(box(0.76, 0.05, 0.4, "cocoa", 0, y, 0)));
+      [-0.34, 0.34].forEach(x => [-0.16, 0.16].forEach(z => g.add(box(0.05, 0.66, 0.05, "cocoa", x, 0.06, z))));
+      [-0.34, 0.34].forEach(x => [-0.16, 0.16].forEach(z => g.add(ball(0.05, "ink", x, 0.05, z, 8))));
+      g.add(box(0.05, 0.05, 0.4, "cocoa", 0.44, 0.84, 0));
+      [-0.16, 0.16].forEach(z => g.add(box(0.12, 0.05, 0.05, "cocoa", 0.39, 0.76, z)));
+      g.add(cyl(0.11, 0.12, 0.16, "deepTeal", -0.14, 0.67, 0, 14));
+      g.add(box(0.12, 0.04, 0.03, "deepTeal", 0.0, 0.76, 0, { rz:0.4 }));
+      [0.14, 0.26].forEach(x => g.add(cyl(0.05, 0.04, 0.07, "cream", x, 0.67, 0.06, 10)));
+      g.add(box(0.5, 0.12, 0.28, "butter", 0, 0.23, 0));
+    } },
+
+  /* BEDROOM */
+  { id:"basket", name:"Blanket Basket", price:240, charm:5, w:1, h:1, room:"bedroom", cls:"medium", build(g){
+      g.add(cyl(0.21, 0.18, 0.42, "warmSand", 0, 0, 0, 16));
+      [0.12, 0.27].forEach(y => g.add(cyl(0.215, 0.215, 0.03, "cocoa", 0, y, 0, 16)));
+      g.add(box(0.38, 0.16, 0.3, "lilac", 0, 0.38, 0, { rz:0.1, fabric:true }));
+      g.add(box(0.12, 0.4, 0.3, "lilac", 0.23, 0.14, 0, { rz:-0.08, fabric:true }));
+    } },
+
+  /* GARDEN */
+  { id:"birdbath", name:"Bird Bath", price:460, charm:8, w:2, h:2, room:"garden", cls:"medium", build(g){
+      g.add(cyl(0.2, 0.24, 0.08, "cream", 0, 0, 0, 16));
+      g.add(cyl(0.07, 0.11, 0.62, "cream", 0, 0.08, 0, 12));
+      g.add(cyl(0.34, 0.16, 0.12, "cream", 0, 0.7, 0, 18));
+      g.add(cyl(0.28, 0.28, 0.02, "mist", 0, 0.8, 0, 18));
+      g.add(ball(0.07, "coral", 0.25, 0.9, 0, 10));
+      g.add(ball(0.045, "coral", 0.31, 0.97, 0, 8));
+      g.add(box(0.04, 0.02, 0.02, "butter", 0.36, 0.97, 0));
+      g.add(box(0.1, 0.03, 0.05, "coral", 0.17, 0.93, 0, { rz:0.3 }));
+    } },
+  { id:"barrow", name:"Wheelbarrow", price:350, charm:6, w:3, h:1, room:"garden", cls:"medium", build(g){
+      g.add(box(0.66, 0.26, 0.48, "deepTeal", 0.08, 0.3, 0, { rz:-0.12 }));
+      g.add(box(0.56, 0.05, 0.38, "softClay", 0.08, 0.54, 0, { rz:-0.12 }));
+      const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.05, 8, 16), mat("ink"));
+      wheel.position.set(0.46, 0.15, 0);
+      g.add(wheel);
+      [-0.13, 0.13].forEach(z => g.add(box(0.8, 0.05, 0.05, "cocoa", -0.16, 0.38, z, { rz:0.18 })));
+      [-0.13, 0.13].forEach(z => g.add(box(0.05, 0.32, 0.05, "cocoa", -0.18, 0, z)));
+      g.add(ball(0.08, "sage", -0.02, 0.62, 0.08, 8));
+      g.add(ball(0.07, "sage", 0.18, 0.58, -0.06, 8));
+    } },
+  { id:"gnome", name:"Garden Gnome", price:180, charm:4, w:1, h:1, room:"garden", cls:"small", build(g){
+      g.add(cyl(0.12, 0.15, 0.24, "sage", 0, 0.04, 0, 12));
+      [-0.05, 0.05].forEach(x => g.add(box(0.07, 0.05, 0.1, "cocoa", x, 0, 0.03)));
+      g.add(ball(0.1, "peach", 0, 0.36, 0, 10));
+      g.add(box(0.15, 0.14, 0.06, "cream", 0, 0.22, 0.08, { rx:0.2 }));
+      g.add(cyl(0.0, 0.12, 0.32, "coral", 0, 0.4, 0, 12));
+    } },
+
+  /* STUDY */
+  { id:"easel", name:"Easel", price:620, charm:10, w:2, h:2, room:"study", cls:"medium", build(g){
+      [-0.26, 0.26].forEach(x => g.add(box(0.06, 1.5, 0.06, "cocoa", x, 0, 0.06, { rz:x > 0 ? -0.12 : 0.12 })));
+      g.add(box(0.06, 1.4, 0.06, "cocoa", 0, 0, -0.3, { rx:0.26 }));
+      g.add(box(0.7, 0.05, 0.12, "cocoa", 0, 0.52, 0.1));
+      const canvas = artFrame(0.72, 0.56, "cream", "mist");
+      canvas.position.set(0, 0.9, 0.08);
+      canvas.rotation.x = -0.1;
+      g.add(canvas);
+      g.add(box(0.2, 0.2, 0.02, "butter", -0.12, 0.95, 0.14, { rz:0.3 }));
+      g.add(box(0.3, 0.12, 0.02, "sage", 0.12, 0.8, 0.14));
+      g.add(box(0.26, 0.03, 0.14, "warmSand", 0.1, 0.56, 0.18));
+      g.add(ball(0.03, "plum", 0.02, 0.6, 0.2, 6));
+    } },
+  { id:"typewrtr", name:"Typewriter", price:380, charm:6, w:1, h:1, room:"study", cls:"medium", build(g){
+      g.add(box(0.42, 0.14, 0.36, "deepTeal", 0, 0, 0));
+      g.add(box(0.38, 0.1, 0.2, "deepTeal", 0, 0.14, -0.06, { rx:-0.2 }));
+      g.add(box(0.46, 0.08, 0.08, "ink", 0, 0.24, -0.12));
+      g.add(box(0.3, 0.3, 0.02, "cream", 0, 0.28, -0.16, { rx:-0.2 }));
+      for(let r = 0; r < 2; r++) for(let i = 0; i < 5; i++)
+        g.add(box(0.05, 0.03, 0.05, "cream", -0.14 + i * 0.07, 0.15, 0.06 + r * 0.06));
+    } },
+
+  /* PORCH */
+  { id:"mailbox", name:"Mailbox", price:260, charm:5, w:1, h:1, room:"porch", cls:"medium", build(g){
+      g.add(box(0.08, 0.72, 0.08, "cocoa", 0, 0, 0));
+      g.add(box(0.22, 0.2, 0.44, "mist", 0, 0.72, 0));
+      const top = new THREE.Group();
+      top.add(cyl(0.11, 0.11, 0.44, "mist", 0, -0.22, 0, 14));
+      top.rotation.x = Math.PI / 2;
+      top.position.set(0, 0.92, 0);
+      g.add(top);
+      g.add(box(0.03, 0.26, 0.03, "coral", 0.13, 0.8, -0.08));
+      g.add(box(0.03, 0.1, 0.12, "coral", 0.13, 1.0, -0.02));
+      g.add(box(0.16, 0.12, 0.02, "cream", 0, 0.78, 0.23));
+    } },
+  { id:"bike", name:"Bike", price:900, charm:13, w:4, h:1, room:"porch", cls:"medium", build(g){
+      [-0.46, 0.46].forEach(x => {
+        const w = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.04, 8, 20), mat("ink"));
+        w.position.set(x, 0.3, 0);
+        g.add(w);
+        g.add(cyl(0.03, 0.03, 0.06, "cocoa", x, 0.27, 0, 6));
+      });
+      g.add(box(0.7, 0.05, 0.05, "coral", 0, 0.55, 0, { rz:0.05 }));
+      g.add(box(0.62, 0.05, 0.05, "coral", -0.16, 0.36, 0, { rz:0.7 }));
+      g.add(box(0.05, 0.5, 0.05, "coral", -0.18, 0.28, 0, { rz:-0.3 }));
+      g.add(box(0.22, 0.05, 0.1, "cocoa", -0.24, 0.74, 0));
+      g.add(box(0.05, 0.3, 0.05, "coral", 0.42, 0.48, 0, { rz:0.25 }));
+      g.add(box(0.05, 0.05, 0.36, "cocoa", 0.44, 0.8, 0));
+      g.add(box(0.24, 0.16, 0.22, "warmSand", 0.56, 0.62, 0));
+      g.add(ball(0.06, "blush", 0.54, 0.82, 0.04, 8));
+    } },
+
+  /* MEMENTOS */
+  { id:"letters", name:"Love Letters", price:1250, charm:26, w:2, h:1, room:"any", memento:true, cls:"medium", build(g){
+      g.add(box(0.56, 0.22, 0.4, "blush", 0, 0, 0));
+      g.add(box(0.6, 0.06, 0.42, "blush", 0, 0.3, -0.26, { rx:-1.1 }));
+      g.add(box(0.05, 0.23, 0.42, "coral", 0, 0, 0));
+      [[0, 0.24, -0.02, 0.1], [0.04, 0.29, 0.04, -0.15], [-0.06, 0.34, 0.0, 0.25]].forEach(([x, y, z, r]) =>
+        g.add(box(0.36, 0.03, 0.24, "cream", x, y, z, { ry:r })));
+      g.add(box(0.1, 0.1, 0.02, "coral", 0.05, 0.42, 0.02, { rz:Math.PI / 4 }));
+    } },
+  { id:"capsule", name:"Time Capsule", price:1650, charm:34, w:2, h:1, room:"any", memento:true, cls:"medium", build(g){
+      g.add(box(0.8, 0.42, 0.4, "warmSand", 0, 0, 0));
+      const lid = new THREE.Group();
+      lid.add(cyl(0.2, 0.2, 0.8, "warmSand", 0, -0.4, 0, 16));
+      lid.rotation.z = Math.PI / 2;
+      lid.position.set(0, 0.42, 0);
+      g.add(lid);
+      [-0.3, 0.3].forEach(x => g.add(box(0.06, 0.64, 0.44, "cocoa", x, 0, 0)));
+      g.add(box(0.12, 0.14, 0.05, "marigold", 0, 0.28, 0.22));
+      g.add(box(0.3, 0.1, 0.02, "cream", 0, 0.1, 0.21));
+    } },
 ];
 function legs2(g, x, z, h){   // chair legs, thin set
   [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx, sz]) =>

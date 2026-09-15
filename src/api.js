@@ -464,6 +464,14 @@ const routes = {
   "POST /nests/{id}/shop/buy"(){ return { ok:true, local:true }; },
   "POST /nests/{id}/rooms/unlock"(){ return { ok:true, local:true }; },
   "POST /nests/{id}/items/restore"(){ return { ok:true, local:true }; },
+  /* Push needs a server to send from, so the local store has nothing to say. */
+  "GET /push/key"(){ return { key:null, local:true }; },
+  "POST /push/subscribe"(){ return { local:true }; },
+  "POST /push/unsubscribe"(){ return { local:true }; },
+  "POST /nests/{id}/notify"(){ return { sent:0, local:true }; },
+  /* Linking a sign in to a guest needs a real identity provider. */
+  "GET /auth/identity"(){ return { anonymous:false, linked:[], available:[], local:true }; },
+  "POST /auth/link"(){ return { local:true }; },
 
   /* The street. With no database there is no one else on it, so the screen
      shows the sample homes and this device's own. */
@@ -615,7 +623,8 @@ const routes = {
    a team makes, not a function, and this list is a stand in: a real build
    sends text to a service that keeps up with how people actually evade one. */
 const BLOCKED_WORDS = ["slur1", "slur2", "hateword"];   // placeholder, see above
-const CONTACT_EMAIL = "safety@nest.app";
+/* the one address players and reviewers are given, from site-config.js */
+const CONTACT_EMAIL = (typeof window !== "undefined" && window.NEST_SITE && window.NEST_SITE.contact) || "support@example.com";
 function moderate(text){
   const t = String(text || "");
   if(!t.trim()) return { ok:true, text:t };
