@@ -33,22 +33,26 @@ async function open(ctx, url){
   const browser = await chromium.launch(launchOpts());
   const ctx = await browser.newContext({ viewport:{ width:420, height:900 } });
   const page = await open(ctx, ORIGIN);
-  await wait(2500);
+  /* Wait for the thing, not for a guess at how long it takes. Fixed pauses
+     passed on a laptop and failed on the slower CI runner, which read the
+     form before the screen that holds it had arrived. */
+  const until = (fn, ms) => page.waitForFunction(fn, null, { timeout:ms || 15000, polling:100 }).catch(() => {});
+  await until(() => !!document.querySelector("#obskip") || !!document.querySelector("#ob-sheet [data-p]"));
 
   await page.evaluate(() => { const s = document.querySelector("#obskip"); if(s) s.click(); });
-  await wait(700);
+  await until(() => !!document.querySelector("#ob-sheet [data-p]"));
   ok("the intro can be skipped and the auth screen arrives",
      await page.evaluate(() => /Begin|waiting for you/.test(document.querySelector("#ob-sheet").textContent)));
 
   await page.evaluate(() => document.querySelector("#ob-sheet [data-p]").click());
-  await wait(500);
+  await until(() => !!document.querySelector("#ob-sheet .btn.go") || !!document.querySelector("#ob-dob"));
   await page.evaluate(() => {
     const i = document.querySelector("#ob-sheet input");
     if(i) i.value = "max" + Date.now();
     const go = document.querySelector("#ob-sheet .btn.go");
     if(go) go.click();
   });
-  await wait(900);
+  await until(() => !!document.querySelector("#ob-dob"));
   ok("and it asks who you are", await page.evaluate(() => !!document.querySelector("#ob-dob")),
      await page.evaluate(() => Onboard.step));
 
@@ -58,7 +62,7 @@ async function open(ctx, url){
     document.querySelector("#ob-dob").value = "2014-01-01";
     document.querySelector("#ob-next").click();
   });
-  await wait(1400);
+  await until(() => Onboard.step === "blocked");
   const blocked = await page.evaluate(async () => {
     const me = await Api.call("GET", "/nests/mine");
     return { step:Onboard.step, name:me.user.display_name, dob:me.user.birthdate,
@@ -72,7 +76,7 @@ async function open(ctx, url){
      blocked.mail && blocked.signOut);
 
   await page.evaluate(() => document.querySelector("#ob-signout").click());
-  await wait(1000);
+  await until(() => Onboard.step === "auth" || Onboard.step === "cold");
   ok("signing out returns to the start",
      await page.evaluate(() => Onboard.step === "auth" || Onboard.step === "cold"),
      await page.evaluate(() => Onboard.step));
