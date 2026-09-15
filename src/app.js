@@ -149,15 +149,22 @@ function mergeGame(base, mine, theirs){
   Object.keys(mineP).forEach(id => { merged[id] = mineP[id]; });             // added or moved here
   out.house.placed = Object.keys(merged).map(id => merged[id]);
 
-  const baseI = (base.house.inventory || []).slice(), mineI = mine.house.inventory || [];
-  const took = baseI.filter(x => mineI.indexOf(x) < 0);
-  out.house.inventory = (theirs.house.inventory || []).slice();
-  took.forEach(x => { const at = out.house.inventory.indexOf(x); if(at >= 0) out.house.inventory.splice(at, 1); });
-  mineI.filter(x => baseI.indexOf(x) < 0).forEach(x => out.house.inventory.push(x));
+  /* Storage by identity too. These rows arrive as parsed JSON, so comparing
+     them as objects never matched: every refused save put everything this
+     device held back into storage a second time, and repairInstanceIds then
+     gave each copy an id of its own, turning three starter items into nine. */
+  const baseInv = byId(base.house.inventory), mineInv = byId(mine.house.inventory);
+  const inv = byId(theirs.house.inventory);
+  Object.keys(baseInv).forEach(id => { if(!mineInv[id]) delete inv[id]; });   // taken out here
+  Object.keys(mineInv).forEach(id => { if(!baseInv[id]) inv[id] = mineInv[id]; });   // put in here
+  // a thing is either on the floor or in storage, never both
+  Object.keys(inv).forEach(id => { if(merged[id]) delete inv[id]; });
+  out.house.inventory = Object.keys(inv).map(id => inv[id]);
 
-  // the streak belongs to the day, so whichever record is further along wins
-  if((mine.streak.count || 0) > (theirs.streak.count || 0) ||
-     (mine.streak.day && mine.streak.day > (theirs.streak.day || ""))) out.streak = mine.streak;
+  /* The streak belongs to the day. A count and a check in only move forward,
+     and each answer belongs to the person who gave it, so two devices that
+     each recorded their own half of the same day keep both halves. */
+  out.streak = mergeStreak(mine.streak || {}, theirs.streak || {});
   if(mine.daily.day && mine.daily.day >= (theirs.daily.day || "")){
     out.daily = { day:mine.daily.day,
       duel:Math.max(mine.daily.duel || 0, theirs.daily.day === mine.daily.day ? theirs.daily.duel || 0 : 0),
@@ -175,6 +182,24 @@ function mergeGame(base, mine, theirs){
   if(mine.ritualLog && (!theirs.ritualLog || mine.ritualLog.length > theirs.ritualLog.length))
     out.ritualLog = mine.ritualLog;
   out.ceremony_pending = mine.ceremony_pending && theirs.ceremony_pending;
+  if(mine.firstRitualPaid || theirs.firstRitualPaid) out.firstRitualPaid = true;
+  return out;
+}
+function mergeStreak(mine, theirs){
+  const out = { ...theirs };
+  if((mine.lastCheckIn || "") > (theirs.lastCheckIn || "")){
+    out.lastCheckIn = mine.lastCheckIn;
+    out.count = mine.count;
+  }else if(mine.lastCheckIn === theirs.lastCheckIn){
+    out.count = Math.max(mine.count || 0, theirs.count || 0);
+  }
+  const day = (mine.day || "") > (theirs.day || "") ? mine.day : theirs.day;
+  out.day = day;
+  ["a", "b"].forEach(k => {
+    const pick = [mine, theirs].find(s => s.day === day && s[k + "Ans"] !== null && s[k + "Ans"] !== undefined);
+    out[k + "Ans"] = pick ? pick[k + "Ans"] : null;
+    out[k] = !!pick;
+  });
   return out;
 }
 
@@ -244,8 +269,25 @@ const Build = {
   stop(){ clearInterval(this.beat); this.beat = null; },
 };
 
+/* The one document for this nest is whatever Api.db holds, and a sync replaces
+   that object rather than editing it. Anything still holding the old object
+   then writes its change onto a copy the database has moved past, and saving
+   it tells the merge that this phone undid everything in between: that is how
+   the first ritual's reward was paid, stored, and then taken back again as if
+   it had been spent. So `state` follows the live document, always. */
+function liveGame(){
+  if(!state || !state.nest_id) return state;
+  const live = Api.db.game[state.nest_id];
+  if(live && live !== state){
+    const couple = state.couple;
+    state = live;
+    if(couple && !state.couple) state.couple = couple;
+  }
+  return state;
+}
+
 const App = {
-  me:null, get game(){ return state; },
+  me:null, get game(){ return liveGame(); },
 
   ensureGame(nestId){
     if(!Api.db.game[nestId]) Api.db.game[nestId] = newGame({ id:nestId });
@@ -326,7 +368,7 @@ const App = {
       name: me.nest.name || "Our nest",
       partnerA: a && a.user ? a.user.display_name : "One",
       partnerB: b && b.user ? b.user.display_name : "Two",
-      togetherSince: new Date(me.nest.created_at).toISOString().slice(0, 10),
+      togetherSince: localDay(new Date(me.nest.created_at)),
     };
   },
   /* one notification path, so the nudge rules cannot be bypassed by a caller,
@@ -364,6 +406,13 @@ const App = {
     s.innerHTML = "";
     const me = this.me;
     const other = me && me.members.find(m => m.user_id !== Api.Session.userId);
+    /* Settings took over the sheet with no way back but guessing that a tab
+       would do it. Inside onboarding the flow draws its own Back. */
+    if(!host && state){
+      const back = el(`<button class="btn back">Back</button>`);
+      back.onclick = () => go(route.tab || "home");
+      s.appendChild(back);
+    }
     if(me && me.nest){
       s.appendChild(el(`<div class="card">
         <p class="h">${esc(me.nest.name || "Your nest")}</p>
@@ -480,7 +529,13 @@ const App = {
         return toast("Type delete to confirm");
       const btn = del.querySelector("#set-del");
       btn.disabled = true; btn.textContent = "Deleting";
-      await Api.call("POST", "/users/me/delete", {});
+      try{
+        await Api.call("POST", "/users/me/delete", {});
+      }catch(err){
+        // nothing was deleted, so say so and give the button back
+        btn.disabled = false; btn.textContent = "Delete my account";
+        return toast("That did not go through. Nothing was deleted. Try again?");
+      }
       toast("Your account is gone");
       this.restart();
     };
@@ -497,8 +552,13 @@ const App = {
       <button class="ob-quiet" id="no">Not now</button></div>`);
     card.querySelector("#no").onclick = () => this.openSettings();
     card.querySelector("#yes").onclick = async () => {
-      card.querySelector("#yes").disabled = true;
-      await Api.call("POST", "/nests/" + me.nest.id + "/leave", {});
+      const yes = card.querySelector("#yes");
+      yes.disabled = true;
+      try{ await Api.call("POST", "/nests/" + me.nest.id + "/leave", {}); }
+      catch(err){
+        yes.disabled = false;
+        return toast("That did not go through. The nest is unchanged. Try again?");
+      }
       this.restart();
     };
     s.appendChild(card);
@@ -657,10 +717,13 @@ function screenHome(root){
   const st = currentDomeState(), s = SEASON_STATES[st], season = seasonNow();
   rollDay();
   const done = state.streak.lastCheckIn === today();
+  const streak = currentStreak();
+  /* "New weather" read as a forecast, and "0 day streak" as a telling off on
+     the first morning. Say what the dome is doing and what the streak needs. */
   root.appendChild(el(`<div class="card">
-    <div class="spread"><div><p class="h">${s.label}${st === "resting" ? "" : " weather"}</p>
+    <div class="spread"><div><p class="h">${st === "new" ? "A fresh dome" : s.label + (st === "resting" ? "" : " weather")}</p>
     <p class="s dim">${s.note} ${season.label} outside.</p></div>
-    <span class="chip warm">${currentStreak()} day streak</span></div></div>`));
+    <span class="chip warm">${streak ? streak + (streak === 1 ? " day" : " days") + " in a row" : "Answer to start a streak"}</span></div></div>`));
   if(!done){
     const c = el(`<div class="card"><div class="spread"><div><p class="h">Today's question is waiting</p>
       <p class="s dim">Both of you answer and the light shifts.</p></div>
@@ -824,7 +887,12 @@ function reportSheet(h){
    "Spam or advertising", "Something else"].forEach(reason => {
     const b = el(`<button class="opt">${esc(reason)}</button>`);
     b.onclick = async () => {
-      const r = await Api.call("POST", "/nests/" + h.id + "/report", { reason });
+      card.querySelectorAll(".opt").forEach(o => { o.disabled = true; });
+      try{ await Api.call("POST", "/nests/" + h.id + "/report", { reason }); }
+      catch(err){
+        card.querySelectorAll(".opt").forEach(o => { o.disabled = false; });
+        return toast("That report did not send. Try again?");
+      }
       toast("Reported. It is off your street.");
       viewingLot = null; refreshWorld(); go("show");
     };
@@ -853,7 +921,9 @@ async function screenShowcase(root){
         <button class="btn sm" id="blk">Block</button></div>`);
       row.querySelector("#rep").onclick = () => reportSheet(h);
       row.querySelector("#blk").onclick = async () => {
-        const r = await Api.call("POST", "/nests/" + h.id + "/block", {});
+        let r;
+        try{ r = await Api.call("POST", "/nests/" + h.id + "/block", {}); }
+        catch(err){ return toast("That did not go through. Try again?"); }
         toast(r.blocked ? "Hidden from your street" : "Unblocked");
         viewingLot = null; refreshWorld(); go("show");
       };
@@ -907,7 +977,13 @@ async function screenShowcase(root){
 }
 
 /* ---- render ---- */
+/* The street waits on the network, and a render can be asked for again while
+   it waits: a partner's change, a like, a tab tap. Each of those used to clear
+   the sheet and then append the whole street a second time underneath the
+   first, so only the newest render is allowed to put anything on screen. */
+let renderSeq = 0;
 async function render(){
+  const seq = ++renderSeq;
   const sheet = $("#sheet");
   sheet.innerHTML = "";
   const bar = $("#bar"), tabs = $("#tabs"), tools = $("#tools");
@@ -923,7 +999,12 @@ async function render(){
   if(route.tab === "home") screenHome(sheet);
   else if(route.tab === "play") screenPlay(sheet);
   else if(route.tab === "build") screenBuild(sheet);
-  else await screenShowcase(sheet);
+  else{
+    const host = document.createDocumentFragment();
+    await screenShowcase(host);
+    if(seq !== renderSeq) return;                 // a newer render owns the sheet now
+    sheet.appendChild(host);
+  }
   if(App.measureSheet) App.measureSheet();
 }
 
@@ -954,6 +1035,11 @@ function watchSheet(){
 }
 
 addEventListener("DOMContentLoaded", async function boot(){
+  /* Registered before anything else listens, and before onboarding hands
+     over to App.enter, so every screen that writes the game (the ceremony,
+     the first ritual, the tutorial) is already holding the live document by
+     the time its own handler runs. */
+  Api.Realtime.on(msg => { if(msg && msg.type === "game.changed") liveGame(); });
   Diorama.init($("#stage"));
   Diorama.onPlace = spot => {
     if(!held || !paired()) return;

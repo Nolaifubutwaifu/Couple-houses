@@ -12,7 +12,7 @@
    It needs somewhere to serve the app from, with a way through to the
    database. Any static server on 8811 will do when the browser can reach
    Supabase directly. */
-const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
+const { chromium, launchOpts } = require("./pw");
 
 const ORIGIN = "http://127.0.0.1:8811/index.html";
 const EXPECTED = 49;
@@ -48,7 +48,7 @@ async function person(browser, _unused, tag){
 
 (async () => {
   const browser = await chromium.launch({
-    executablePath:"/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    ...launchOpts(),
     args:["--proxy-server=" + (process.env.HTTPS_PROXY || ""),
           "--proxy-bypass-list=127.0.0.1;localhost",
           "--ignore-certificate-errors"],

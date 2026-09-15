@@ -12,9 +12,7 @@
 
    Needs a static server on 8811 and playwright resolvable. Set
    NEST_PLAYWRIGHT and NEST_CHROMIUM to point at them elsewhere. */
-const { chromium } = require(process.env.NEST_PLAYWRIGHT ||
-  "/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
-const CHROME = process.env.NEST_CHROMIUM || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const { chromium, launchOpts } = require("./pw");
 const ORIGIN = "http://127.0.0.1:8811/index.html";
 const EXPECTED = 15;
 const pass = [], fail = [];
@@ -44,7 +42,7 @@ const answerOne = async (p, n) => {
 };
 
 (async () => {
-  const browser = await chromium.launch({ executablePath:CHROME });
+  const browser = await chromium.launch(launchOpts());
   const ctx = await browser.newContext({ viewport:{ width:420, height:900 } });
   const A = await tab(ctx, "A");
   await wait(1500);

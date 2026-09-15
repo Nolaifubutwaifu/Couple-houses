@@ -20,7 +20,10 @@ const BALANCE = {
 
   /* Memory. Filler for one person alone, so it pays least and caps soonest. */
   memoryPerDay: 2, memoryPairs: 6, memoryMax: 30, memoryMin: 8,
-  memoryParMoves: 8, memoryStepPenalty: 3,
+  /* Six pairs cannot be cleared in fewer than six moves, and with no lucky
+     first flips a perfect memory still needs about ten. A par of eight meant
+     nearly every round paid less than the rate this table advertises. */
+  memoryParMoves: 10, memoryStepPenalty: 3,
 };
 
 /* Asked once a day, the same question for both partners. Light, answerable in
@@ -142,7 +145,14 @@ const MEMORY_FACES = ["plant","cat","flowers","bake","lamp","tulips","guitar","c
 let activeGame = null;
 
 /* ---- the day, and the caps that hang off it ---- */
-function today(){ return new Date().toISOString().slice(0, 10); }
+/* The couple's day, not Greenwich's. toISOString is UTC, so in Brisbane the
+   day turned over at ten in the morning: the streak broke over breakfast and
+   the daily caps came back halfway through a morning. */
+function localDay(d){
+  d = d || new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function today(){ return localDay(); }
 function daysSince(dateStr){
   if(!dateStr) return 999;
   const a = new Date(dateStr + "T00:00:00").getTime();
@@ -252,10 +262,17 @@ const GAMES = {
           <button class="btn sm">${done ? "missed it" : "Answer"}</button></div>`);
         row.querySelector("button").onclick = () => {
           if(done) return;
-          this.ask(root, key, name, q);
+          go("play", { game:"ritual", asking:true });
         };
         host.appendChild(row);
       });
+      /* Answering is a place in the route rather than a sheet drawn over the
+         top, so a change from the other phone redraws the question you are
+         reading instead of throwing you back to the card behind it. */
+      if(route.view && route.view.asking && !done && !hasAnswered(s, mine)){
+        host.closest(".card").remove();
+        return this.ask(root, mine, ritualName(mine), q);
+      }
       if(both){
         const same = s.aAns === s.bAns;
         root.appendChild(el(`<div class="card mid"><p class="h">${
@@ -264,21 +281,24 @@ const GAMES = {
       }
     },
     ask(root, key, name, q){
-      const s = this;
-      const sheet = $("#sheet");
-      sheet.innerHTML = "";
-      sheet.appendChild(el(`<div class="card"><span class="chip">${esc(name)}</span>
-        <p class="h" style="margin-top:10px">${esc(q.q)}</p><div class="opts" id="ro"></div></div>`));
+      const card = el(`<div class="card"><span class="chip">${esc(name)}</span>
+        <p class="h" style="margin-top:10px">${esc(q.q)}</p>
+        <p class="s dim">Your answer stays hidden until both of you are in.</p>
+        <div class="opts" id="ro"></div></div>`);
       q.o.forEach((text, i) => {
         const b = el(`<button class="opt">${esc(text)}</button>`);
         b.onclick = () => {
+          rollDay();
+          if(hasAnswered(state.streak, key)) return render();     // a double tap is one answer
           state.streak[key + "Ans"] = i;
           state.streak[key] = true;
+          route.view = { game:"ritual" };
           completeRitual();
           save(); render();
         };
-        sheet.querySelector("#ro").appendChild(b);
+        card.querySelector("#ro").appendChild(b);
       });
+      root.appendChild(card);
     },
   },
 
@@ -352,11 +372,17 @@ const GAMES = {
       q.o.forEach((text, idx) => {
         const b = el(`<button class="opt">${esc(text)}</button>`);
         b.onclick = () => {
-          if(d[field].length !== i) return;            // a double tap is one answer
-          d[field].push(idx);
-          if(d[field].length >= d.qs.length){
-            if(field === "answers") d.phase = "guess";
-            else { d.phase = "done"; this.settle(d); }
+          /* The document this screen was drawn from may already have been
+             replaced by one from the other phone. Writing into the old copy
+             saved nothing, so the answer is written into the live round, and
+             only if it is still the same round at the same question. */
+          const cur = this.round();
+          if(!cur || cur.qs[0].q !== d.qs[0].q || cur.answerer !== d.answerer) return render();
+          if(cur[field].length !== i) return render();   // a double tap is one answer
+          cur[field].push(idx);
+          if(cur[field].length >= cur.qs.length){
+            if(field === "answers") cur.phase = "guess";
+            else { cur.phase = "done"; this.settle(cur); }
           }
           save(); render();
         };
