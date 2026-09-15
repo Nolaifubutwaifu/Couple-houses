@@ -21,6 +21,7 @@ begin
   end if;
   clean := nest_private.enforce_game(r, doc);
   update nests set game = clean, game_rev = r.game_rev + 1, updated_at = now() where id = n;
+  perform nest_private.refresh_street(r, clean);   -- 004: a published home follows the house
   return json_build_object('ok', true, 'rev', r.game_rev + 1, 'game', clean);
 end $$;
 
