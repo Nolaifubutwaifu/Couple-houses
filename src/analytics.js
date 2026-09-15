@@ -38,6 +38,7 @@ const Track = {
   fire(name, props){
     if(!EVENT_SET.has(name)){ console.warn("event not in the spec:", name); return; }
     this.log.push({ name, props:props || {}, at:Date.now(), user:Api.Session.userId });
+    if(typeof Monitor !== "undefined") Monitor.event(name, props);
     this.save();
   },
   /* fires once ever per device, so funnel denominators stay honest */

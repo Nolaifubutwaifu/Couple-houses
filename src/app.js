@@ -295,6 +295,7 @@ const Economy = {
     catch(err){ return { error:err.code || "failed" }; }
   },
   refusal(code){
+    if(typeof Sound !== "undefined") Sound.play("error");
     return ({ not_enough_coins:"Not enough coins", room_locked:"Unlock that room first",
               frozen:"This nest is frozen", not_paired:"Your partner needs to be here" })[code]
       || "That did not go through. Try again?";
@@ -317,7 +318,56 @@ const Push = {
     try{ return (await Notification.requestPermission()) === "granted"; }
     catch(err){ return false; }
   },
+  supported(){
+    return typeof navigator !== "undefined" && "serviceWorker" in navigator && typeof window.PushManager !== "undefined";
+  },
+  /* iPhone and iPad only deliver web push to a site added to the Home Screen */
+  needsHomeScreen(){
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+    return ios && !standalone;
+  },
+  /* A browser subscription, handed to the database with the local time zone,
+     so the partner notifications and the seven o'clock reminder have somewhere
+     to go. Quietly does nothing where push cannot work. */
+  async subscribe(){
+    if(!Api.backend || !this.supported() || this.permission() !== "granted" || this.muted()) return false;
+    try{
+      const reg = await navigator.serviceWorker.register("sw.js");
+      let sub = await reg.pushManager.getSubscription();
+      if(!sub){
+        const { key } = await Api.call("GET", "/push/key");
+        if(!key) return false;
+        sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:base64Url(key) });
+      }
+      const j = sub.toJSON();
+      await Api.call("POST", "/push/subscribe", { endpoint:j.endpoint, p256dh:j.keys.p256dh, auth:j.keys.auth,
+                                                  tz_offset:-new Date().getTimezoneOffset() });
+      return true;
+    }catch(err){ console.warn("push subscription failed", err); return false; }
+  },
+  async unsubscribe(){
+    if(!this.supported()) return;
+    try{
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg && await reg.pushManager.getSubscription();
+      if(!sub) return;
+      if(Api.backend) await Api.call("POST", "/push/unsubscribe", { endpoint:sub.endpoint });
+      await sub.unsubscribe();
+    }catch(err){ /* the database drops dead subscriptions on its own */ }
+  },
 };
+function base64Url(s){
+  const pad = "=".repeat((4 - s.length % 4) % 4);
+  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+/* Tell the other person something happened. Fire and forget: the push
+   function decides whether it is worth a notification and throttles it. */
+function notifyPartner(kind){
+  if(!Api.backend || !App.me || !App.me.nest) return;
+  Api.call("POST", "/nests/" + App.me.nest.id + "/notify", { kind }).catch(() => {});
+}
 
 /* Only one pair of hands at a time. Two people dragging furniture around the
    same room at once is not collaboration, it is a fight the loser does not
@@ -421,6 +471,7 @@ const App = {
     render();
     refreshWorld();
     Economy.call("/items/restore");          // anything owned the document lost, back into storage
+    Push.subscribe();                          // refresh the subscription and the time zone it sends at
     Api.Realtime.on(msg => {
       if(!state || msg.payload.nest_id !== state.nest_id) return;
       if(msg.type === "game.changed"){
@@ -570,6 +621,33 @@ const App = {
     };
     s.appendChild(out);
 
+    /* A guest account lives in this browser only. Linking a sign in keeps the
+       same account and nest, and makes both recoverable on any device. */
+    if(Api.backend){
+      Api.call("GET", "/auth/identity").then(id => {
+        if(!id || !id.anonymous || !id.available.length || !out.isConnected) return;
+        const names = { apple:"Apple", google:"Google" };
+        const keep = el(`<div class="card">
+          <p class="h">Keep your nest safe</p>
+          <p class="s dim">Right now your account lives only in this browser. Link a sign in and you can
+          get back to this nest from any device, even if this browser is cleared.</p>
+          <div class="ob-stack" id="link-ways"></div></div>`);
+        id.available.forEach(p => {
+          const b = el(`<button class="btn">Link ${names[p]}</button>`);
+          b.onclick = async () => {
+            b.disabled = true;
+            try{ await Api.call("POST", "/auth/link", { provider:p }); }
+            catch(err){
+              b.disabled = false;
+              toast(err.code === "linking_disabled" ? "Linking is not switched on yet" : "That did not work. Try again?");
+            }
+          };
+          keep.querySelector("#link-ways").appendChild(b);
+        });
+        out.after(keep);
+      }).catch(() => {});
+    }
+
     const perm = Push.permission();
     const on = perm === "granted" && !Push.muted();
     const note = el(`<div class="card">
@@ -584,30 +662,44 @@ const App = {
       ${perm === "unsupported" || perm === "denied" ? ""
         : `<button class="btn" id="set-push" style="margin-top:12px">${
             on ? "Mute notifications" : perm === "granted" ? "Turn them back on" : "Turn on notifications"}</button>`}</div>`);
+    if(Push.needsHomeScreen() && perm !== "denied"){
+      note.appendChild(el(`<p class="s dim" style="margin-top:8px">On iPhone and iPad, add NEST to your Home
+        Screen first (Share, then Add to Home Screen) and open it from there. That is the only place Apple
+        delivers notifications from a web app.</p>`));
+    }
     if(note.querySelector("#set-push")) note.querySelector("#set-push").onclick = async () => {
-      if(on){ Push.setMuted(true); toast("Muted"); return this.openSettings(host); }
+      if(on){ Push.setMuted(true); await Push.unsubscribe(); toast("Muted"); return this.openSettings(host); }
       if(perm !== "granted"){
         const got = await Push.ask();
         Track.fire(got ? "push_granted" : "push_denied", { via:"settings" });
         if(!got) toast("Your browser said no");
       }
       Push.setMuted(false);
+      Push.subscribe();
       this.openSettings(host);
     };
     s.appendChild(note);
+
+    const soundOn = !Sound.muted();
+    const sound = el(`<div class="card">
+      <p class="h">Sound</p>
+      <p class="s dim">${soundOn ? "On. Soft sounds when you place things, earn and answer." : "Off."}</p>
+      <button class="btn" id="set-sound" style="margin-top:12px">${soundOn ? "Turn sound off" : "Turn sound on"}</button></div>`);
+    sound.querySelector("#set-sound").onclick = () => {
+      Sound.setMuted(soundOn);
+      if(!soundOn) Sound.play("tap");
+      this.openSettings(host);
+    };
+    s.appendChild(sound);
 
     const help = el(`<div class="card">
       <p class="h">Help and legal</p>
       <p class="s dim">Something wrong, or a question about your data? Write to
         <a href="mailto:${CONTACT_EMAIL}">${esc(CONTACT_EMAIL)}</a> and a person answers.</p>
-      <p class="s dim"><a href="#terms" id="set-terms">Terms</a> ·
-        <a href="#privacy" id="set-priv">Privacy Policy</a></p></div>`);
-    ["#set-terms", "#set-priv"].forEach(id => {
-      help.querySelector(id).onclick = e => {
-        e.preventDefault();
-        toast("The real document opens here in the product");
-      };
-    });
+      <p class="s dim"><a href="support.html" target="_blank" rel="noopener">Support</a> ·
+        <a href="terms.html" target="_blank" rel="noopener">Terms</a> ·
+        <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a> ·
+        <a href="community.html" target="_blank" rel="noopener">Community Guidelines</a></p></div>`);
     s.appendChild(help);
 
     const del = el(`<div class="card" style="margin-top:14px">
@@ -701,6 +793,7 @@ function earn(n, why){
   if(!paired()) return;
   state.wallet.coins += n; state.wallet.lifetimeEarned += n;
   save(); toast("+" + n + " coins, " + why);
+  if(typeof Sound !== "undefined") Sound.play("coins");
 }
 function spend(n){
   if(!paired()) return false;
@@ -854,6 +947,7 @@ function screenPlay(root){
     root.appendChild(b);
   });
   root.appendChild(el(`<p class="s dim mid">${state.stats.gamesPlayed} rounds played · ${state.wallet.lifetimeEarned.toLocaleString()} coins earned</p>`));
+  Ads.slot(root, "play");
 }
 
 function screenBuild(root){
@@ -886,6 +980,7 @@ function screenBuild(root){
       state.house.rooms[r.id].unlocked = true;
       shopFilter = r.id;
       save(); refreshWorld(); toast(r.name + " built"); render();
+      Sound.play("unlock");
       Economy.call("/rooms/unlock", { room:r.id }).then(res => {
         if(!res || !res.error) return;
         liveGame();
@@ -968,6 +1063,7 @@ function screenBuild(root){
       const instanceId = item.id + "_" + uid();
       state.house.inventory.push({ instanceId, itemId:item.id });
       save(); toast(item.name + " delivered"); render();
+      Sound.play("buy");
       Economy.call("/shop/buy", { item:item.id, instance:instanceId }).then(res => {
         if(!res || !res.error) return;
         liveGame();
@@ -1093,6 +1189,7 @@ async function screenShowcase(root){
       <span class="rank">${i + 1}</span></button>`);
     card.onclick = () => { viewingLot = h; refreshWorld(); go("show", { house:h }); };
     root.appendChild(card);
+    if(i === 2) Ads.slot(root, "street");
   });
   root.appendChild(el(`<p class="s dim mid" style="margin-top:16px">${
     hidden ? hidden + (hidden === 1 ? " home is" : " homes are") + " hidden because you blocked or reported "
@@ -1173,6 +1270,8 @@ addEventListener("DOMContentLoaded", async function boot(){
     held = null;
     Diorama.setHeld(null);
     save(); render();
+    Sound.play("place");
+    notifyPartner("build");
   };
   Diorama.onPick = p => {
     if(held || viewingLot || !paired()) return;
@@ -1181,6 +1280,7 @@ addEventListener("DOMContentLoaded", async function boot(){
     Diorama.removeProp(p.instanceId);
     held = { instanceId:p.instanceId, itemId:p.itemId, rot:p.rot };
     Diorama.setHeld(held.itemId, held.rot);
+    Sound.play("pick");
     save();
     if(route.tab !== "build") go("build"); else render();
   };
@@ -1198,6 +1298,9 @@ addEventListener("DOMContentLoaded", async function boot(){
   if(/[#&]dev\b/.test(location.hash)) $("#devbtn").hidden = $("#funbtn").hidden = false;
   $("#devbtn").onclick = () => openBible();
   $("#funbtn").onclick = () => openFunnel();
+  /* The service worker only receives notifications; it caches nothing. */
+  if("serviceWorker" in navigator && (location.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)))
+    navigator.serviceWorker.register("sw.js").catch(() => {});
   watchSheet();
   setTimeout(() => { const sp = $("#splash"); if(sp) sp.classList.add("gone"); }, 380);
   Onboard.begin();

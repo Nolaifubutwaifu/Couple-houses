@@ -12,6 +12,12 @@ window.NEST_SITE = {
   minAge:   16,
   effective: "15 September 2026",
   appUrl:   "https://couple-houses.vercel.app",
+  /* Cloudflare Turnstile site key. Public by design. Empty means no CAPTCHA.
+     Deploy the key first, then turn CAPTCHA on in Supabase Auth. */
+  turnstileSiteKey: "",
+  /* Advertising. Empty means none. AdSense needs a domain you own:
+     { provider:"adsense", client:"ca-pub-...", slot:"1234567890" } */
+  ads: { provider:"", client:"", slot:"" },
 };
 
 /* Fill in any element that asks for one of the values above, so the pages

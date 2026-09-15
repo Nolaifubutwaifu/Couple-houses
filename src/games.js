@@ -296,6 +296,8 @@ const GAMES = {
           completeRitual();
           save(); render();
           Economy.call("/ritual/answer", { day:today(), answer:i });
+          Sound.play(hasAnswered(state.streak, "a") && hasAnswered(state.streak, "b") ? "reveal" : "tap");
+          notifyPartner("ritual");
         };
         card.querySelector("#ro").appendChild(b);
       });
@@ -381,9 +383,10 @@ const GAMES = {
           if(!cur || cur.qs[0].q !== d.qs[0].q || cur.answerer !== d.answerer) return render();
           if(cur[field].length !== i) return render();   // a double tap is one answer
           cur[field].push(idx);
+          Sound.play("tap");
           if(cur[field].length >= cur.qs.length){
-            if(field === "answers") cur.phase = "guess";
-            else { cur.phase = "done"; this.settle(cur); }
+            if(field === "answers"){ cur.phase = "guess"; notifyPartner("duel_answer"); }
+            else { cur.phase = "done"; this.settle(cur); notifyPartner("duel_done"); Sound.play("reveal"); }
           }
           save(); render();
         };
@@ -492,6 +495,7 @@ const GAMES = {
       g.moves++;
       const a = g.cards[g.first];
       if(a.id === c.id){
+        Sound.play("match");
         a.done = c.done = true; a.up = c.up = false;
         g.first = null; g.matched++;
         if(g.matched === BALANCE.memoryPairs){
@@ -506,6 +510,7 @@ const GAMES = {
         render(); return;
       }
       g.lock = true;
+      Sound.play("miss");
       render();
       setTimeout(() => { a.up = false; c.up = false; g.first = null; g.lock = false; render(); }, 720);
     },

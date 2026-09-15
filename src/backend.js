@@ -45,9 +45,17 @@ const Backend = {
       if(!lib) return this.off("client library blocked");
       this.sb = lib.createClient(BACKEND.url, BACKEND.key, {
         auth:{ storageKey:"nest.sb.auth" + (AS_TAG ? "." + AS_TAG : ""),
-               persistSession:true, autoRefreshToken:true, detectSessionInUrl:false },
+               persistSession:true, autoRefreshToken:true, detectSessionInUrl:true, flowType:"pkce" },
       });
       const { data } = await this.sb.auth.getSession();
+      /* An Apple or Google round trip comes back with ?code= on the address,
+         which has been exchanged for a session by now. Take it off, keeping
+         anything else (an invite code) where it was. */
+      if(/[?&](code|error|error_description)=/.test(location.search)){
+        const u = new URL(location.href);
+        ["code", "error", "error_code", "error_description", "state"].forEach(k => u.searchParams.delete(k));
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      }
       this.uid = data && data.session ? data.session.user.id : null;
       if(this.uid) Session.set(this.uid); else Session.clear();
       this.on = true; this.reason = "live";
@@ -391,8 +399,18 @@ const BROUTES = {
      email later without losing any of that. What it cannot survive is a
      cleared browser, which is the whole of the trade. */
   async "POST /auth/session"({ provider }){
+    /* Apple and Google leave the page and come back signed in, so there is
+       nothing to return but that they are on their way. */
+    if(provider === "apple" || provider === "google"){
+      if(this.providers.indexOf(provider) < 0) throw apiError(501, "provider_unavailable:" + provider);
+      const o = await this.sb.auth.signInWithOAuth({ provider, options:{ redirectTo:location.origin + location.pathname } });
+      if(o.error) throw apiError(500, "auth_failed");
+      return { redirecting:true };
+    }
     if(provider !== "guest") throw apiError(501, "provider_unavailable:" + provider);
-    const r = await this.sb.auth.signInAnonymously();
+    let captchaToken = null;
+    try{ captchaToken = await Captcha.token(); }catch(err){ throw apiError(400, "captcha_failed"); }
+    const r = await this.sb.auth.signInAnonymously(captchaToken ? { options:{ captchaToken } } : undefined);
     if(r.error){
       if(/anonymous/i.test(r.error.message || "")) throw apiError(501, "provider_unavailable:guest");
       throw apiError(500, "auth_failed");
@@ -681,6 +699,48 @@ const BROUTES = {
   },
   async "POST /nests/{id}/items/restore"({ id }){
     return this.money(id, "restore_items", { n:id }, "restore_failed");
+  },
+
+  /* Push. The key pair lives in the database and the push function makes it
+     on first use, so the public half is asked for rather than shipped. */
+  async "GET /push/key"(){
+    const r = await this.sb.functions.invoke("push", { body:{ action:"key" } });
+    if(r.error || !r.data || !r.data.key) throw apiError(503, "push_unavailable");
+    return { key:r.data.key };
+  },
+  async "POST /push/subscribe"({ endpoint, p256dh, auth, tz_offset }){
+    this.need();
+    return this.ok(await this.sb.rpc("save_push_subscription", { endpoint, p256dh, auth, tz_offset }), "push_failed");
+  },
+  async "POST /push/unsubscribe"({ endpoint }){
+    this.need();
+    return this.ok(await this.sb.rpc("delete_push_subscription", { endpoint }), "push_failed");
+  },
+  /* the function checks the caller is in the nest and rate limits by kind */
+  async "POST /nests/{id}/notify"({ id, kind }){
+    this.need();
+    const r = await this.sb.functions.invoke("push", { body:{ action:"partner", nest_id:id, kind } });
+    return (r && r.data) || { sent:0 };
+  },
+
+  /* A guest account lives in one browser. Linking Apple or Google to it keeps
+     the same account, nest and all, and makes it recoverable on any device.
+     Needs "Allow manual linking" switched on in Supabase Auth. */
+  async "GET /auth/identity"(){
+    this.need();
+    const { data } = await this.sb.auth.getUser();
+    const u = data && data.user;
+    return { anonymous:!!(u && u.is_anonymous),
+             linked:((u && u.identities) || []).map(i => i.provider).filter(p => p !== "anonymous"),
+             available:this.providers.filter(p => p === "apple" || p === "google") };
+  },
+  async "POST /auth/link"({ provider }){
+    this.need();
+    if(["apple", "google"].indexOf(provider) < 0 || this.providers.indexOf(provider) < 0)
+      throw apiError(501, "provider_unavailable:" + provider);
+    const r = await this.sb.auth.linkIdentity({ provider, options:{ redirectTo:location.origin + location.pathname } });
+    if(r.error) throw apiError(400, /manual linking/i.test(r.error.message || "") ? "linking_disabled" : "link_failed");
+    return { redirecting:true };
   },
 
   async "GET /nests/archived"(){

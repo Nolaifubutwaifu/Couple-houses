@@ -63,11 +63,16 @@ async function person(browser, _unused, tag){
   r = await B.call("POST", "/users/me", { display_name:"Bo", birthdate:"1993-08-19" });
   ok("B saves details", r.ok && r.r.user.age_verified);
 
-  /* 2. under age is refused by the same code path */
+  /* 2. under age is refused by the same code path. A refusal sticks, so it
+     gets an account of its own: trying again with an older year is exactly
+     the retry loop the block exists to stop. */
+  const K = await person(browser, null, "k");
   const kid = new Date(); kid.setFullYear(kid.getFullYear() - 12);
-  r = await B.call("POST", "/users/me", { display_name:"Bo", birthdate:kid.toISOString().slice(0, 10) });
+  r = await K.call("POST", "/users/me", { display_name:"Kid", birthdate:kid.toISOString().slice(0, 10) });
   ok("under 16 is blocked", !r.ok && r.code === "under_age", JSON.stringify(r));
-  await B.call("POST", "/users/me", { display_name:"Bo", birthdate:"1993-08-19" });
+  r = await K.call("POST", "/users/me", { display_name:"Kid", birthdate:"1990-01-01" });
+  if(!(!r.ok && r.code === "under_age")) console.log("  FAIL the block survived a retry :: " + JSON.stringify(r));
+  await K.ctx.close();
 
   /* 3. A founds a nest and gets a code */
   r = await A.call("POST", "/nests", {});

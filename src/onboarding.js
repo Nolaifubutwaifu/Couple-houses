@@ -299,19 +299,17 @@ const Onboard = {
     s.querySelector("#ob-back").onclick = () => this.go("auth");
     s.querySelector("#ob-code-in").onclick = () => this.authWith(this.ways()[0]);
   },
+  /* The real documents, in a new tab, so the flow is still here to come back to. */
   legal(title){
-    const s = this.sheet(`<div class="ob-card">
-      <p class="ob-h">${esc(title)}</p>
-      <p class="s dim">This prototype has no legal copy behind it yet. In the product this opens
-        the real document in an in app browser without leaving the flow.</p>
-      <button class="btn go" id="ob-back">Back</button></div>`);
-    s.querySelector("#ob-back").onclick = () => this.render();
+    window.open(title === "Terms" ? "terms.html" : "privacy.html", "_blank", "noopener");
   },
   async authWith(provider){
     Track.fire("auth_started", { provider });
     if(provider === "email") return this.emailStart();
     // a guest account needs nothing typed, so there is nothing to show
     if(provider === "guest") return this.completeAuth("guest", null, null);
+    // with a database, Apple and Google are the real thing, not a stand in sheet
+    if(Api.backend && (provider === "apple" || provider === "google")) return this.completeAuth(provider, null, null);
     // Apple and Google cannot really run in a page, so this stands in for
     // the provider's account sheet. The same handle restores the same
     // identity, which is what makes the reinstall case testable.
@@ -334,6 +332,7 @@ const Onboard = {
     if(btn){ btn.disabled = true; btn.textContent = "One moment"; }
     try{
       const r = await Api.call("POST", "/auth/session", { provider, subject });
+      if(r && r.redirecting) return;               // the provider's page takes over and brings them back
       Track.fire("auth_completed", { provider });
       const me = await Api.call("GET", "/nests/mine");
       if(me.user.birthdate && !me.user.age_verified) return this.go("blocked");

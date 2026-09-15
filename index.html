@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>NEST</title>
+<meta name="description" content="A shared home for two people, built together a little at a time.">
+<meta name="theme-color" content="#FBF3E7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NEST">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;700&display=swap">
@@ -179,6 +188,8 @@ img{display:block;max-width:100%}
 .f input{width:100%;padding:13px;border-radius:14px;border:0;background:var(--oat);color:var(--ink);
   font:inherit;min-height:48px}
 
+#captcha{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:200}
+.adcard{overflow:hidden}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sheet) + var(--tabs) + 14px);
   z-index:20;background:var(--ink);color:var(--cream);padding:11px 18px;border-radius:999px;font-weight:700;
   font-size:13px;opacity:0;transition:opacity .25s ease, transform .25s cubic-bezier(.34,1.4,.64,1);pointer-events:none}
@@ -310,9 +321,14 @@ body.onboarding #sheet,body.onboarding #tabs,body.onboarding #bar,body.onboardin
 <div id="toast"></div>
 <div id="dev" hidden></div>
 
+<script src="site-config.js"></script>
 <script src="vendor/three.min.js"></script>
 <script src="src/api.js"></script>
 <script src="src/backend.js"></script>
+<script src="src/monitor.js"></script>
+<script src="src/sound.js"></script>
+<script src="src/captcha.js"></script>
+<script src="src/ads.js"></script>
 <script src="src/analytics.js"></script>
 <script src="src/palette.js"></script>
 <script src="src/props.js"></script>
@@ -321,5 +337,13 @@ body.onboarding #sheet,body.onboarding #tabs,body.onboarding #bar,body.onboardin
 <script src="src/games.js"></script>
 <script src="src/app.js"></script>
 <script src="src/onboarding.js"></script>
+<script>
+  /* Vercel Web Analytics counts visits without cookies once it is switched on
+     in the Vercel dashboard. Only the deployed site asks for it. */
+  if(/\.vercel\.app$/.test(location.hostname)){
+    const s = document.createElement("script"); s.defer = true; s.src = "/_vercel/insights/script.js";
+    document.head.appendChild(s);
+  }
+</script>
 </body>
 </html>
