@@ -38,6 +38,15 @@ const NUDGES = [
 ];
 const PUSH_SNOOZE = 14 * 24 * 3600e3;
 
+/* The link a partner actually taps. It used to point at nest.app, which is not
+   where this runs, so every shared invite opened somebody else's domain and
+   the code never arrived. The page reads ?j= itself, so its own address is
+   the right one wherever it is hosted. */
+function inviteLink(code){
+  const here = location.protocol === "file:" ? "" : location.origin + location.pathname;
+  return here ? here + "?j=" + encodeURIComponent(code) : "code " + code;
+}
+
 const Onboard = {
   step:null, ctx:{}, introTimer:null, beat:0, pendingCode:null, nudgeTimer:null,
 
@@ -241,7 +250,7 @@ const Onboard = {
     const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">${from ? esc(from) + " is waiting for you" : "Begin"}</p>
       <p class="s dim">${from ? "Sign in and their nest is yours too. " : ""}One tap. No passwords, ever.</p>
-      <div class="ob-auth">${this.authButtons()}</div>
+      <div class="ob-auth">${this.authButtons(from)}</div>
       <p class="ob-legal">By continuing you agree to our <a href="#terms" id="ob-terms">Terms</a> and
         <a href="#privacy" id="ob-priv">Privacy Policy</a>.</p>
       <button class="ob-quiet" id="ob-have">I already have a nest</button>
@@ -249,7 +258,15 @@ const Onboard = {
     s.querySelectorAll("[data-p]").forEach(b => {
       b.onclick = () => this.authWith(b.dataset.p);
     });
-    s.querySelector("#ob-have").onclick = () => this.authWith(this.ways()[0]);
+    /* With guest accounts as the only way in, this button used to sign in as
+       a guest, which makes a brand new account: a returning person tapped
+       "I already have a nest" and was handed an empty one. A guest nest lives
+       in the browser that made it, so say that instead of pretending. */
+    s.querySelector("#ob-have").onclick = () => {
+      const ways = this.ways();
+      if(ways.length === 1 && ways[0] === "guest") return this.guestRestore();
+      this.authWith(ways.find(w => w !== "guest") || ways[0]);
+    };
     ["#ob-terms", "#ob-priv"].forEach(id => {
       s.querySelector(id).onclick = e => { e.preventDefault(); this.legal(id === "#ob-terms" ? "Terms" : "Privacy Policy"); };
     });
@@ -258,14 +275,29 @@ const Onboard = {
      Apple is switched off is a dead end wearing a working button. Without
      one, the local store stands in for all three. */
   ways(){ return Api.backend ? Backend.providers : ["apple", "google", "email"]; },
-  authButtons(){
+  /* Somebody arriving on a link is joining, not starting. "Start a nest"
+     under "Max is waiting for you" reads like the wrong button. */
+  authButtons(inviter){
     const label = {
-      guest:"Start a nest", apple:"Sign in with Apple",
+      guest: inviter ? "Join " + esc(inviter) + "'s nest" : "Start a nest", apple:"Sign in with Apple",
       google:"Continue with Google", email:"Continue with email",
     };
     return this.ways().map((p, i) =>
       `<button class="btn ${i === 0 ? "go" : "ob-prov"}${p === "apple" && i === 0 ? " ob-apple" : ""}"
         data-p="${p}">${label[p]}</button>`).join("\n        ");
+  },
+  guestRestore(){
+    const s = this.sheet(`<div class="ob-card">
+      <p class="ob-h">Your nest lives in one browser</p>
+      <p class="s dim">Nests here are kept in the browser that started them, with no password
+        to sign back in with. Open NEST in that same browser, on the same device, and it
+        picks up where you left off.</p>
+      <p class="s dim">If that browser has been cleared, the account is gone, but the nest is
+        not: ask your partner for a new code from their settings and join it again.</p>
+      <button class="btn go" id="ob-code-in">I have a code from my partner</button>
+      <button class="ob-quiet" id="ob-back">Back</button></div>`);
+    s.querySelector("#ob-back").onclick = () => this.go("auth");
+    s.querySelector("#ob-code-in").onclick = () => this.authWith(this.ways()[0]);
   },
   legal(title){
     const s = this.sheet(`<div class="ob-card">
@@ -450,8 +482,7 @@ const Onboard = {
         <button class="btn go" id="ob-invite">I want to invite my partner</button>
         <button class="btn" id="ob-redeem">My partner sent me a code</button>
       </div>
-      <p class="s dim">Nest only works with two people. You can invite someone now or come
-        back to it later.</p>
+      <p class="s dim">Invite someone now, or look around first and come back to it later.</p>
       <button class="ob-quiet" id="ob-solo">Look around on my own first</button></div>`);
     s.querySelector("#ob-invite").onclick = async () => {
       Track.fire("pair_fork_chosen", { choice:"invite" });
@@ -639,7 +670,7 @@ const Onboard = {
     Diorama.orbit = 2 * Math.PI / 180;
     this.showEmptyNest(nest);
     this.top(null);
-    const link = "https://nest.app/j/" + invite.code;
+    const link = inviteLink(invite.code);
     const s = this.sheet(`<div class="ob-card">
       <p class="ob-h">Your invite</p>
       <div class="ob-code">${invite.code.split("").map(c => `<b>${c}</b>`).join("")}</div>
@@ -920,21 +951,37 @@ const Onboard = {
       s.querySelector("#ob-prop").onclick = async () => {
         const name = s.querySelector("#ob-nn").value.trim();
         if(!name) return toast("Give it a name");
-        Api.Realtime.emit("nest.proposed", { nest_id:me.nest.id, name });
+        const propose = () => Api.Realtime.emit("nest.proposed", { nest_id:me.nest.id, name });
+        propose();
+        /* A proposal sent while the partner is still watching the ceremony
+           reaches a screen that is not listening yet, and then both of them
+           wait on each other. Say it again until it is answered. */
+        clearInterval(this._nameEcho);
+        this._nameEcho = setInterval(() => {
+          if(this.step !== "nameNest") return clearInterval(this._nameEcho);
+          propose();
+        }, 3000);
         this.sheet(`<div class="ob-card mid"><p class="ob-h">"${esc(name)}"</p>
           <p class="s dim">Waiting for ${esc(this.partnerNames(me).partnerB)} to agree.</p>
           <div class="ob-pulse"></div></div>`);
         this._proposed = name;
       };
       Api.Realtime.on(msg => {
-        if(this.step === "nameNest" && msg.type === "nest.named") this.go("firstRitual", me);
+        if(this.step === "nameNest" && msg.type === "nest.named"){
+          clearInterval(this._nameEcho);
+          this.go("firstRitual", me);
+        }
       });
     }else{
       this.sheet(`<div class="ob-card mid"><p class="ob-h">Naming the nest</p>
         <p class="s dim">${esc(this.partnerNames(me).partnerA)} is proposing a name.</p>
         <div class="ob-pulse"></div></div>`);
+      this._shownProposal = null;
       Api.Realtime.on(msg => {
         if(this.step !== "nameNest" || msg.type !== "nest.proposed") return;
+        // the proposal repeats until answered, and a repeat must not wipe an edit
+        if(this._shownProposal === msg.payload.name) return;
+        this._shownProposal = msg.payload.name;
         const s = this.sheet(`<div class="ob-card">
           <p class="ob-h">They suggest</p>
           <label class="f"><span>Our nest is called</span>
@@ -965,14 +1012,43 @@ const Onboard = {
       <p class="s dim">You both answer. This is the thing you will do every day.</p>
       <div class="opts" id="ob-opts"></div></div>`);
     const opts = s.querySelector("#ob-opts");
-    let mine = null, theirs = null;
+    const iAmFounder = me.membership.role === "founder";
+    const myKey = iAmFounder ? "a" : "b", otherKey = iAmFounder ? "b" : "a";
+    let mine = null, theirs = null, settled = false;
+    /* One message each way is not a handshake. If a partner is still watching
+       the ceremony when the answer goes out, it lands on a screen that is not
+       listening and both of them wait on each other forever. So an answer
+       repeats until the round settles, and hearing the other answer is
+       answered once with your own. */
+    const send = () => Api.Realtime.emit("ritual.answered", { nest_id:me.nest.id, i:mine });
+    clearInterval(this._ritualEcho);
     const settle = () => {
-      if(mine === null || theirs === null) return;
+      if(settled || mine === null || theirs === null) return;
+      settled = true;
+      clearInterval(this._ritualEcho);
       App.ensureGame(me.nest.id);
-      App.game.wallet.coins += 40;
-      App.game.wallet.lifetimeEarned += 40;
-      App.game.bond += 1;
-      App.game.house.inventory = STARTER_ITEMS.map(id => ({ instanceId:"start_" + id, itemId:id }));
+      const g = App.game;
+      rollDay();
+      /* These are today's answers, so they count as today's ritual. Home
+         used to greet a couple who had just answered with "Today's question
+         is waiting" and a streak of nothing. */
+      g.streak[myKey + "Ans"] = mine; g.streak[myKey] = true;
+      g.streak[otherKey + "Ans"] = theirs; g.streak[otherKey] = true;
+      if(g.streak.lastCheckIn !== today()){ g.streak.count = 1; g.streak.lastCheckIn = today(); }
+      /* Starter items carry fixed ids, so both phones writing them is one set
+         and not two. The reward is paid by one phone only: both of them used
+         to pay it, and the merge faithfully added both payments together. */
+      STARTER_ITEMS.forEach(id => {
+        const iid = "start_" + id;
+        if(!g.house.inventory.some(i => i.instanceId === iid) && !g.house.placed.some(p => p.instanceId === iid))
+          g.house.inventory.push({ instanceId:iid, itemId:id });
+      });
+      if(iAmFounder && !g.firstRitualPaid){
+        g.wallet.coins += 40;
+        g.wallet.lifetimeEarned += 40;
+        g.bond = (g.bond || 0) + 1;
+        g.firstRitualPaid = true;
+      }
       App.saveGame();
       Track.fire("first_ritual_completed");
       this.sheet(`<div class="ob-card mid">
@@ -987,16 +1063,26 @@ const Onboard = {
         if(mine !== null) return;
         mine = i;
         b.dataset.state = "pick";
-        Api.Realtime.emit("ritual.answered", { nest_id:me.nest.id, i });
-        if(theirs === null) s.querySelector(".dim").textContent = "Waiting for " +
-          (me.membership.role === "founder" ? this.partnerNames(me).partnerB : this.partnerNames(me).partnerA) + ".";
+        opts.querySelectorAll(".opt").forEach(o => { o.disabled = o !== b; });
+        send();
+        if(theirs === null){
+          s.querySelector(".dim").textContent = "Waiting for " +
+            (iAmFounder ? this.partnerNames(me).partnerB : this.partnerNames(me).partnerA) + ".";
+          this._ritualEcho = setInterval(() => {
+            if(this.step !== "firstRitual" || settled) return clearInterval(this._ritualEcho);
+            send();
+          }, 3000);
+        }
         settle();
       };
       opts.appendChild(b);
     });
     Api.Realtime.on(msg => {
       if(this.step !== "firstRitual" || msg.type !== "ritual.answered") return;
+      if(msg.payload.nest_id && msg.payload.nest_id !== me.nest.id) return;
+      const firstHeard = theirs === null;
       theirs = msg.payload.i;
+      if(firstHeard && mine !== null) send();         // they may have missed ours
       settle();
     });
   },
@@ -1006,11 +1092,20 @@ const Onboard = {
     const me = this.ctx;
     // aim at the room as well as zooming, or the pulsing tile can sit off screen
     Diorama.flyTo({ zoomK:Diorama.ZOOM_K[2] * 1.2, target:Diorama.roomCentre("living"), ms:900 });
-    const item = App.game.house.inventory[0];
+    /* Both phones run this tutorial, so each takes its own starter item and
+       its own tile. Taking inventory[0] on both put two plants on one tile
+       and left the armchair and the photos in storage. */
+    const iAmFounder = me.membership.role === "founder";
+    App.ensureGame(me.nest.id);                 // the live document, not the one from before the last sync
+    const inv = App.game.house.inventory;
+    const want = iAmFounder ? "start_plant" : "start_armchair";
+    const item = inv.find(i => i.instanceId === want) || inv[0];
+    if(!item) return this.go("push", me);          // nothing to place, nothing to teach
+    const spotTile = iAmFounder ? { room:"living", x:2, y:5 } : { room:"living", x:6, y:2 };
     this.top(`<div class="ob-tourbar">Tap the glowing tile</div>`);
     this.sheet(null);
     Diorama.setHeld(item.itemId, 0);
-    Diorama.pulseTarget({ room:"living", x:2, y:5 });
+    Diorama.pulseTarget(spotTile);
     /* Borrow the next tap, then hand it straight back. Assigning onPlace here
        left the tutorial owning every tap for the rest of the session: the item
        you had actually picked up was destroyed, a duplicate of the starter

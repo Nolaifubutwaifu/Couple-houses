@@ -1,7 +1,7 @@
 /* The other half of the same question: with no backend reachable, does the
    local store still run the whole flow exactly as it did before? Two tabs,
    one browser, no network. */
-const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
+const { chromium, launchOpts } = require("./pw");
 const ORIGIN = "http://127.0.0.1:8811/index.html";
 const EXPECTED = 16;
 const pass = [], fail = [];
@@ -22,7 +22,7 @@ async function tab(ctx, who, config){
 }
 
 (async () => {
-  const browser = await chromium.launch({ executablePath:"/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+  const browser = await chromium.launch(launchOpts());
   // one context, two tabs: the local store is shared and the session is not,
   // which is exactly the shape the local model was written for
   const ctx = await browser.newContext();

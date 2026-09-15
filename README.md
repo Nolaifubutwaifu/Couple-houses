@@ -363,6 +363,21 @@ store and quietly named nobody on the database. The four client suites
 (`handoff`, `entry`, `two-phones`, `solo`) run entirely on the local store, so
 they hold with no network at all.
 
+**Running them on your own machine.** The suites used to name a Playwright
+path inside one sandbox, so nowhere else could start them. They now resolve
+Playwright from `node_modules` through `tools/pw.js`:
+
+```bash
+npm install
+npx playwright install chromium
+npm test                         # every suite, starting tools/serve.js if needed
+node tools/run-all.js local solo # just the ones whose names match
+```
+
+`NEST_PLAYWRIGHT` and `NEST_CHROMIUM` still override both. `tools/merge-test.js`
+needs no browser and no server: it loads `src/app.js` into a bare context and
+checks the three way merge directly, which is where item duplication lived.
+
 ## Leaving, deletion and moderation
 
 The decisions are recorded in `docs/joint-data-policy.md`. The short version:
