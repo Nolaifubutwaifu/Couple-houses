@@ -6,7 +6,7 @@
    is where the curve turns. Pass a name to run just one. */
 const { spawn } = require("node:child_process");
 const http = require("node:http");
-const SUITES = ["parity-test", "local-test", "pairing-test", "guest-pair-test", "screen-pair-test", "room-sync-test",
+const SUITES = ["parity-test", "merge-test", "local-test", "pairing-test", "guest-pair-test", "screen-pair-test", "room-sync-test",
                 "handoff-test", "entry-test", "two-phones-test", "solo-test"];
 const only = process.argv.slice(2);
 const list = only.length ? SUITES.filter(s => only.some(o => s.indexOf(o) >= 0)) : SUITES;

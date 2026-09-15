@@ -4,7 +4,7 @@
    which it always would; what it never asked was whether the founder's
    screen bothers to ask. It did not, and nobody found out until a person
    sat looking at a code that never did anything. */
-const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
+const { chromium, launchOpts } = require("./pw");
 
 const ORIGIN = "http://127.0.0.1:8811/index.html";
 const EXPECTED = 8;
@@ -38,7 +38,7 @@ async function signUp(p, name, birthdate){
 
 (async () => {
   const browser = await chromium.launch({
-    executablePath:"/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    ...launchOpts(),
     args:["--proxy-server=" + (process.env.HTTPS_PROXY || ""),
           "--proxy-bypass-list=127.0.0.1;localhost", "--ignore-certificate-errors"],
   });

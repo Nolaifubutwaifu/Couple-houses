@@ -107,8 +107,10 @@ Honest list, so nobody mistakes a shortcut for a decision.
   increments only" and that there is "no free camera", so that every screenshot
   a player takes is composed. That was overridden deliberately: the dome now
   follows your finger, a flick carries momentum, and it rests wherever you let
-  go. Tilt stays locked at 32 degrees and roll is still impossible, so the two
-  rules doing the most work survive. The arrows remain and are more useful than
+  go. Tilt is free too now: dragging up and down raises and lowers the camera
+  between 8 and 80 degrees, and tapping **home** eases it back to the
+  composed 32. Roll is still impossible, and the clamps keep it a small
+  object seen from outside rather than a floor plan or a view from the grass. The arrows remain and are more useful than
   before, taking you to the next quarter turn from any resting angle, which is
   still the fastest way to a framed shot. The consequence was handled rather
   than ignored: the asset review now samples eight yaws instead of four,
@@ -362,6 +364,21 @@ which they had: `GET /invites/{code}` was in `src/api.js` and not in
 store and quietly named nobody on the database. The four client suites
 (`handoff`, `entry`, `two-phones`, `solo`) run entirely on the local store, so
 they hold with no network at all.
+
+**Running them on your own machine.** The suites used to name a Playwright
+path inside one sandbox, so nowhere else could start them. They now resolve
+Playwright from `node_modules` through `tools/pw.js`:
+
+```bash
+npm install
+npx playwright install chromium
+npm test                         # every suite, starting tools/serve.js if needed
+node tools/run-all.js local solo # just the ones whose names match
+```
+
+`NEST_PLAYWRIGHT` and `NEST_CHROMIUM` still override both. `tools/merge-test.js`
+needs no browser and no server: it loads `src/app.js` into a bare context and
+checks the three way merge directly, which is where item duplication lived.
 
 ## Leaving, deletion and moderation
 

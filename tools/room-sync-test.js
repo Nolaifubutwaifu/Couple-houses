@@ -3,7 +3,7 @@
    one side create the game document and the other side receive it. When both
    sides create their own, and both number their own revisions, the two rooms
    drift apart and nothing ever brings them back. */
-const { chromium } = require("/tmp/claude-0/-home-user-Couple-houses/a4be0025-710d-52b8-9ec5-b63856445aec/scratchpad/node_modules/playwright");
+const { chromium, launchOpts } = require("./pw");
 
 const ORIGIN = "http://127.0.0.1:8811/index.html";
 const EXPECTED = 14;
@@ -36,7 +36,7 @@ const room = p => p.eval(id => {
 
 (async () => {
   const browser = await chromium.launch({
-    executablePath:"/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    ...launchOpts(),
     args:["--proxy-server=" + (process.env.HTTPS_PROXY || ""),
           "--proxy-bypass-list=127.0.0.1;localhost", "--ignore-certificate-errors"],
   });

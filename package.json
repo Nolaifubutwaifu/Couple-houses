@@ -1,0 +1,13 @@
+{
+  "name": "nest",
+  "private": true,
+  "description": "NEST: a shared home for two people, built as a diorama under a glass dome.",
+  "scripts": {
+    "serve": "node tools/serve.js",
+    "test": "node tools/run-all.js",
+    "test:unit": "node tools/merge-test.js && node tools/parity-test.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
+  }
+}

@@ -47,6 +47,7 @@ const TERRAIN_COLOUR = { grass:"sage", sand:"warmSand", stone:"mist", snow:"crea
 const Diorama = {
   ready:false, mode:"home", held:null, heldRot:0,
   yaw:0, yawTarget:0, yawFrom:0, yawT:1,
+  pitch:32 * Math.PI / 180, pitchFrom:0, pitchTo:0, pitchT:1,
   zoomStop:1, zoomK:1.16, zoomFrom:1.16, zoomTo:1.16, zoomT:1,
   spin:0, dragging:false, calm:false, orbit:0,
   baseMaterial:null, terrainType:null, pulse:null, frameShift:0,
@@ -462,19 +463,43 @@ const Diorama = {
     this.hl.material.color = new THREE.Color(ok ? PALETTE.sage : PALETTE.coral);
   },
 
-  /* ---- camera, section 4 ---- */
+  /* ---- camera, section 4 ----
+     Section 4 locks the tilt at 32 degrees. That was overridden the same way
+     yaw was: a vertical drag now raises or lowers the camera, so the home can
+     be looked at from nearly level with the plinth up to almost straight
+     down. The clamps are where it stops being a small object held in the
+     hand: below eight degrees the terrain goes edge on and the dome rim cuts
+     through the room, and past eighty the orthographic view flattens into a
+     floor plan and lookAt runs out of an up direction. Roll stays impossible. */
+  PITCH_DEFAULT: 32 * Math.PI / 180,
+  PITCH_MIN: 8 * Math.PI / 180,
+  PITCH_MAX: 80 * Math.PI / 180,
   frameCamera(){ this.applyCamera(); },
   applyCamera(){
-    const tilt = 32 * Math.PI / 180;
+    const tilt = this.pitch === undefined ? this.PITCH_DEFAULT : this.pitch;
     const R = 40;
     const y = this.yaw;
+    this.camera.up.set(0, 1, 0);
     this.camera.position.set(
       this.target.x + Math.sin(y) * Math.cos(tilt) * R,
       this.target.y + Math.sin(tilt) * R,
       this.target.z + Math.cos(y) * Math.cos(tilt) * R
     );
     this.camera.lookAt(this.target);
-    this.camera.up.set(0, 1, 0);
+  },
+  clampPitch(p){ return Math.max(this.PITCH_MIN, Math.min(this.PITCH_MAX, p)); },
+  setPitch(p){
+    this.pitchT = 1;
+    this.pitch = this.clampPitch(p);
+    this.applyCamera();
+  },
+  /* back to the composed angle, on the same spring the arrows use */
+  resetPitch(){
+    const now = this.pitch === undefined ? this.PITCH_DEFAULT : this.pitch;
+    if(Math.abs(now - this.PITCH_DEFAULT) < 0.005) return;
+    this.pitchFrom = now;
+    this.pitchTo = this.PITCH_DEFAULT;
+    this.pitchT = 0;
   },
   /* The arrows still exist alongside the drag, and they are worth more now
      than before: from any resting angle they take you to the next composed
@@ -505,6 +530,8 @@ const Diorama = {
     let near = 0, best = 1e9;
     this.ZOOM_K.forEach((k, i) => { const d = Math.abs(k - this.zoomK); if(d < best){ best = d; near = i; } });
     this.setZoom((near + 1) % 3);
+    // landing on home is landing on the composed shot, angle included
+    if(this.zoomStop === 1) this.resetPitch();
     return this.ZOOM_NAMES[this.zoomStop];
   },
   /* Section 4 of the onboarding spec moves the camera between intro beats.
@@ -636,8 +663,9 @@ const Diorama = {
       if(pts.size === 1){
         this.spin = 0;
         this.yawT = 1;                  // a hand on the dome stops any tween
+        this.pitchT = 1;
         this.dragging = false;
-        start = { x:e.clientX, y:e.clientY, yaw:this.yaw, t:performance.now(), moved:0 };
+        start = { x:e.clientX, y:e.clientY, yaw:this.yaw, pitch:this.pitch, t:performance.now(), moved:0 };
       }else if(pts.size === 2){
         const [a, b] = [...pts.values()];
         pinch = { d:Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), k:this.zoomK };
@@ -658,11 +686,17 @@ const Diorama = {
       }
 
       if(start){
-        const dx = e.clientX - start.x;
-        start.moved = Math.max(start.moved, Math.hypot(dx, e.clientY - start.y));
-        if(!this.dragging && Math.abs(dx) > 6) this.dragging = true;
+        const dx = e.clientX - start.x, dy = e.clientY - start.y;
+        start.moved = Math.max(start.moved, Math.hypot(dx, dy));
+        /* Either direction starts a drag now. Sideways turns the dome, up and
+           down raises and lowers the camera, and a diagonal does both, the
+           way a thing held in the hand is turned. Dragging down lifts the
+           camera, as if pushing the near edge of the plinth away. */
+        if(!this.dragging && Math.hypot(dx, dy) > 6) this.dragging = true;
         if(this.dragging){
           const k = (Math.PI * 2.3) / Math.max(1, el.clientWidth);   // a full swipe is a bit over half a turn
+          const kp = (Math.PI * 0.9) / Math.max(1, el.clientHeight); // a full height swipe covers the whole range
+          this.pitch = this.clampPitch(start.pitch + dy * kp);
           const now = performance.now(), prev = this.yaw;
           this.yaw = start.yaw - dx * k;
           const dt = Math.max(8, now - start.t);
@@ -763,7 +797,7 @@ const Diorama = {
   },
   /* moving of its own accord, as opposed to breathing */
   busy(){
-    if(this.fly || this.dragging || this.yawT < 1 || this.zoomT < 1 || this.spin) return true;
+    if(this.fly || this.dragging || this.yawT < 1 || this.pitchT < 1 || this.zoomT < 1 || this.spin) return true;
     const props = Object.values(this.props || {});
     return props.some(g => g.userData.anim);
   },
@@ -795,6 +829,11 @@ const Diorama = {
       this.yawTarget = this.yaw;
       this.applyCamera();
     }
+    if(this.pitchT < 1){
+      this.pitchT = Math.min(1, this.pitchT + dt / 0.45);
+      this.pitch = lerp(this.pitchFrom, this.pitchTo, springOut(this.pitchT, 0.4));
+      this.applyCamera();
+    }
     if(this.fly){
       const f = this.fly;
       f.t = Math.min(1, f.t + dt / f.ms);
@@ -820,6 +859,8 @@ const Diorama = {
       // a wall turned toward the camera at all is between you and the room,
       // so it never goes all the way back to solid
       if(facing > 0.02) want = Math.min(want, 0.6);
+      // looking down from high up, a half height wall hides nothing behind it
+      want = lerp(want, 1, smoothstep(55, 75, this.pitch * 180 / Math.PI));
       w.userData.opacity = lerp(w.userData.opacity, want, 1 - Math.pow(0.001, dt));
       w.material.opacity = w.userData.opacity;
       w.visible = w.userData.opacity > 0.08;
